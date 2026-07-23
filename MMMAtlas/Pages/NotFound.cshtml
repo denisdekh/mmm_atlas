@@ -1,0 +1,12 @@
+@page "/not-found"
+@{
+    ViewData["Title"] = "Not found";
+    ViewData["Page"] = "not-found";
+}
+
+<section class="message-page">
+    <p class="eyebrow">404 · Off the map</p>
+    <h1>That page isn’t in the atlas.</h1>
+    <p>The address may have changed, or the page may not exist yet.</p>
+    <a class="primary-action" asp-page="/Index">Return home</a>
+</section>

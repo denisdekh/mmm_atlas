@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#11131a" />
+    <title>@ViewData["Title"] · MMM Atlas</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body data-page="@ViewData["Page"]">
+    <header class="site-header">
+        <a class="brand" asp-page="/Index" aria-label="MMM Atlas home">
+            <span class="brand-mark" aria-hidden="true">M³</span>
+            <span>MMM Atlas</span>
+        </a>
+
+        <nav class="site-nav" aria-label="Primary navigation">
+            <a asp-page="/Index" asp-fragment="atlas">Explore the model</a>
+            <a asp-page="/Index" asp-fragment="games">Test game API</a>
+            <a asp-page="/Index" asp-fragment="about">About</a>
+        </nav>
+    </header>
+
+    <main>
+        @RenderBody()
+    </main>
+
+    <footer class="site-footer">
+        <span>MMM Atlas</span>
+        <span>Community game classification</span>
+    </footer>
+
+    <script type="module" src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

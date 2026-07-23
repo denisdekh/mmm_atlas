@@ -1,0 +1,120 @@
+# MMM Atlas
+
+MMM Atlas is an ASP.NET Core website for mapping games by their Micro, Meso,
+and Macro characteristics. The current development build includes a local
+SQLite database, seeded game data, API endpoints, and a browser-based API test
+panel on the home page.
+
+## Prerequisites
+
+Install these dependencies before cloning and running the project:
+
+- [Git](https://git-scm.com/downloads)
+- [.NET SDK 10.0.103](https://dotnet.microsoft.com/download/dotnet/10.0)
+  - `global.json` pins this SDK feature band and permits newer patch releases.
+  - The SDK includes the ASP.NET Core runtime.
+- A current web browser
+
+No separate SQLite installation, Node.js installation, or Docker service is
+required. The SQLite native runtime and all other application libraries are
+restored through NuGet.
+
+The project also restores the repository-local `dotnet-ef` 10.0.10 tool. It is
+not required for an ordinary development run, but it will be used for future
+EF Core migrations.
+
+## Clone and run
+
+From a terminal:
+
+```powershell
+git clone <repository-url>
+cd MMM_Atlas
+dotnet --version
+dotnet restore MMMAtlas.sln
+dotnet tool restore
+dotnet build MMMAtlas.sln
+dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
+```
+
+Replace `<repository-url>` with the repository's Git URL.
+
+Open [http://localhost:5163](http://localhost:5163). The home page contains a
+development panel that calls the game list, detail, image, and vote APIs.
+
+The launch profile sets `ASPNETCORE_ENVIRONMENT=Development`. Development mode
+automatically:
+
+1. Creates `MMMAtlas/App_Data/mmm-atlas-development.db`.
+2. Applies the schema in `SQLiteTableSchemas.sql`.
+3. Runs the idempotent `MMMAtlas/Data/DevelopmentSeed.sql` script.
+4. Loads four games with test images, four users, twelve votes, ownership
+   records, and aggregate statistics.
+
+The generated database and local ASP.NET data-protection keys are ignored by
+Git.
+
+## HTTPS development
+
+HTTPS is optional for the current local API and UI work. To use it, trust the
+.NET development certificate once:
+
+```powershell
+dotnet dev-certs https --trust
+dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile https
+```
+
+Then open [https://localhost:7176](https://localhost:7176).
+
+On Linux, certificate trust may require browser- or distribution-specific
+configuration. The HTTP launch profile remains available.
+
+## Run tests
+
+```powershell
+dotnet test MMMAtlas.sln
+```
+
+To build and test without restoring packages again:
+
+```powershell
+dotnet build MMMAtlas.sln --no-restore
+dotnet test MMMAtlas.sln --no-build --no-restore
+```
+
+## Reset the development data
+
+Stop the application before resetting the database.
+
+PowerShell:
+
+```powershell
+Remove-Item -LiteralPath MMMAtlas/App_Data/mmm-atlas-development.db -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath MMMAtlas/App_Data/mmm-atlas-development.db-shm -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath MMMAtlas/App_Data/mmm-atlas-development.db-wal -ErrorAction SilentlyContinue
+dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
+```
+
+Bash:
+
+```bash
+rm -f MMMAtlas/App_Data/mmm-atlas-development.db
+rm -f MMMAtlas/App_Data/mmm-atlas-development.db-shm
+rm -f MMMAtlas/App_Data/mmm-atlas-development.db-wal
+dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
+```
+
+The next Development startup recreates and reseeds the database.
+
+## Restored application packages
+
+`dotnet restore` installs the project-managed dependencies, including:
+
+- ASP.NET Security OpenID Steam provider 10.0.0
+- Entity Framework Core SQLite and Design packages 10.0.10
+- SQLitePCLRaw native SQLite bundle 2.1.12
+- AngleSharp 1.5.2
+- MSTest and ASP.NET Core test-host packages used by `MMMAtlas.Tests`
+
+Steam authentication configuration is not yet required to run the seeded
+development UI.

@@ -1,0 +1,17 @@
+@page "/error"
+@model ErrorModel
+@{
+    ViewData["Title"] = "Error";
+    ViewData["Page"] = "error";
+}
+
+<section class="message-page">
+    <p class="eyebrow">Request interrupted</p>
+    <h1>Something went wrong.</h1>
+    <p>The request could not be completed. Try again, or return to the atlas.</p>
+    @if (Model.ShowRequestId)
+    {
+        <p class="request-id">Request ID: <code>@Model.RequestId</code></p>
+    }
+    <a class="primary-action" asp-page="/Index">Return home</a>
+</section>
