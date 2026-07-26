@@ -17,6 +17,11 @@ CREATE TABLE IF NOT EXISTS SteamAccounts
     UserId              INTEGER NOT NULL
         CONSTRAINT PK_SteamAccounts PRIMARY KEY,
     SteamId             INTEGER NOT NULL,
+    DataCollectionEnabled INTEGER NOT NULL DEFAULT 0,
+    PersonaName         TEXT    NULL,
+    ProfileUrl          TEXT    NULL,
+    AvatarUrl           TEXT    NULL,
+    ProfileFetchedAtUtc TEXT    NULL,
     CreatedAtUtc        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAtUtc        TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     LibraryCheckStatus  TEXT    NOT NULL DEFAULT 'NeverChecked',
@@ -31,6 +36,8 @@ CREATE TABLE IF NOT EXISTS SteamAccounts
         UNIQUE (SteamId),
     CONSTRAINT CK_SteamAccounts_SteamId_Positive
         CHECK (SteamId > 0),
+    CONSTRAINT CK_SteamAccounts_DataCollectionEnabled_Boolean
+        CHECK (DataCollectionEnabled IN (0, 1)),
     CONSTRAINT CK_SteamAccounts_LibraryCheckStatus
         CHECK (
             LibraryCheckStatus IN (
@@ -67,6 +74,8 @@ CREATE TABLE IF NOT EXISTS SteamGames
     GameId       INTEGER NOT NULL
         CONSTRAINT PK_SteamGames PRIMARY KEY,
     SteamAppId   INTEGER NOT NULL,
+    Name         TEXT    NULL,
+    IconUrl      TEXT    NULL,
     CreatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -82,10 +91,13 @@ CREATE TABLE IF NOT EXISTS SteamGames
 
 CREATE TABLE IF NOT EXISTS SteamLibraryGames
 (
-    UserId        INTEGER NOT NULL,
-    GameId        INTEGER NOT NULL,
-    FirstSeenAtUtc TEXT   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    VerifiedAtUtc  TEXT   NOT NULL,
+    UserId                    INTEGER NOT NULL,
+    GameId                    INTEGER NOT NULL,
+    PlaytimeForeverMinutes    INTEGER NOT NULL DEFAULT 0,
+    PlaytimeTwoWeeksMinutes   INTEGER NULL,
+    LastPlayedAtUtc           TEXT    NULL,
+    FirstSeenAtUtc            TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    VerifiedAtUtc             TEXT    NOT NULL,
 
     CONSTRAINT PK_SteamLibraryGames
         PRIMARY KEY (UserId, GameId),
@@ -96,7 +108,14 @@ CREATE TABLE IF NOT EXISTS SteamLibraryGames
     CONSTRAINT FK_SteamLibraryGames_SteamGames_GameId
         FOREIGN KEY (GameId)
         REFERENCES SteamGames (GameId)
-        ON DELETE RESTRICT
+        ON DELETE RESTRICT,
+    CONSTRAINT CK_SteamLibraryGames_PlaytimeForeverMinutes_NonNegative
+        CHECK (PlaytimeForeverMinutes >= 0),
+    CONSTRAINT CK_SteamLibraryGames_PlaytimeTwoWeeksMinutes_NonNegative
+        CHECK (
+            PlaytimeTwoWeeksMinutes IS NULL
+            OR PlaytimeTwoWeeksMinutes >= 0
+        )
 );
 
 CREATE TABLE IF NOT EXISTS Votes

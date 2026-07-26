@@ -33,6 +33,7 @@ cd MMM_Atlas
 dotnet --version
 dotnet restore MMMAtlas.sln
 dotnet tool restore
+dotnet user-secrets --project MMMAtlas/MMMAtlas.csproj set "Steam:ApiKey" "<your-key>"
 dotnet build MMMAtlas.sln
 dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
 ```
@@ -116,5 +117,7 @@ The next Development startup recreates and reseeds the database.
 - AngleSharp 1.5.2
 - MSTest and ASP.NET Core test-host packages used by `MMMAtlas.Tests`
 
-Steam authentication configuration is not yet required to run the seeded
-development UI.
+The application requires a Steam Web API key at startup. Store it under
+`Steam:ApiKey` with .NET user-secrets for local development, as shown above,
+and use the deployment platform's secret store in production. Do not put the
+key in an appsettings file or commit it to source control.

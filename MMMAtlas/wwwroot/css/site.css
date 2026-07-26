@@ -684,6 +684,105 @@ h2 {
     color: var(--text);
 }
 
+.dashboard-game {
+    margin-bottom: 0.75rem;
+}
+
+.dashboard-game > span {
+    margin-right: 0.75rem;
+}
+
+.vote-dialog {
+    width: min(calc(100% - 2rem), 32rem);
+    padding: 1.25rem;
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    background: var(--surface-raised);
+    color: var(--text);
+}
+
+.vote-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.vote-dialog-header,
+.vote-dialog-actions,
+.vote-slider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.vote-dialog-header {
+    justify-content: space-between;
+}
+
+.vote-dialog-header h2 {
+    font-size: 1.75rem;
+}
+
+.vote-dialog-game {
+    min-height: 1rem;
+    margin-block: 1rem;
+}
+
+.vote-dialog-game img {
+    border-radius: 0.35rem;
+    object-fit: cover;
+}
+
+.vote-slider {
+    margin-block: 1rem;
+}
+
+.vote-slider span {
+    width: 4rem;
+}
+
+.vote-slider input {
+    flex: 1;
+}
+
+.vote-slider output {
+    width: 2.5rem;
+    text-align: right;
+}
+
+.vote-dialog-actions {
+    justify-content: flex-end;
+    margin-top: 1.25rem;
+}
+
+.vote-error {
+    color: #ff9e92;
+}
+
+.vote-toast-region {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 10;
+}
+
+.vote-toast {
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    background: var(--surface-raised);
+    animation: vote-toast-fade 3.5s ease forwards;
+}
+
+@keyframes vote-toast-fade {
+    0%,
+    70% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
 :focus-visible {
     outline: 2px solid var(--macro);
     outline-offset: 4px;

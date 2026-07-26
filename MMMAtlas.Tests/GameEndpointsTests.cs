@@ -1,13 +1,20 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MMMAtlas.Data;
+using MMMAtlas.Steam;
 
 namespace MMMAtlas.Tests;
 
@@ -146,11 +153,89 @@ public sealed class GameEndpointsTests
         Assert.AreEqual("Game not found", problem.Title);
     }
 
+    [TestMethod]
+    public async Task EraseSteamDataRequiresAuthentication()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+
+        var response = await client.PostAsync(
+            "/api/me/steam-data/erase",
+            content: null);
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task SubmitVoteRequiresAuthentication()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+
+        var response = await client.PostAsync(
+            "/api/me/votes/1",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["microScore"] = "5.0",
+                ["mesoScore"] = "5.0",
+                ["macroScore"] = "5.0"
+            }));
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task SubmitVoteAmendsTheUsersVote()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        var response = await client.PostAsync(
+            "/api/me/votes/1",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["microScore"] = "9.1",
+                ["mesoScore"] = "2.2",
+                ["macroScore"] = "3.3"
+            }));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var submitted =
+            await response.Content.ReadFromJsonAsync<VoteSubmissionResponse>();
+        Assert.IsNotNull(submitted);
+        Assert.AreEqual(9.1m, submitted.MicroScore);
+        Assert.AreEqual(2.2m, submitted.MesoScore);
+        Assert.AreEqual(3.3m, submitted.MacroScore);
+        Assert.IsTrue(submitted.Amended);
+
+        var votes = await client.GetFromJsonAsync<VoteResponse[]>(
+            "/api/games/1/votes");
+        Assert.IsNotNull(votes);
+        Assert.AreEqual(9.1, votes[0].MicroScore);
+        Assert.AreEqual(2.2, votes[0].MesoScore);
+        Assert.AreEqual(3.3, votes[0].MacroScore);
+    }
+
     private sealed record VoteResponse(
         double MicroScore,
         double MesoScore,
         double MacroScore,
         string? PublicSteamId);
+
+    private sealed record VoteSubmissionResponse(
+        decimal MicroScore,
+        decimal MesoScore,
+        decimal MacroScore,
+        bool Amended);
 
     private sealed record ProblemResponse(int Status, string Title);
 
@@ -175,6 +260,7 @@ public sealed class GameEndpointsTests
         {
             InitializeDatabase();
             builder.UseEnvironment("Production");
+            builder.UseSetting("Steam:ApiKey", "integration-test-key");
             builder.ConfigureLogging(logging => logging.ClearProviders());
             builder.ConfigureServices(services =>
             {
@@ -182,6 +268,21 @@ public sealed class GameEndpointsTests
                 services.AddSingleton(DatabaseConnection.Create(
                     $"Data Source={_databasePath};Foreign Keys=True",
                     Directory.GetCurrentDirectory()));
+                services.RemoveAll<IAntiforgery>();
+                services.AddSingleton<IAntiforgery, TestAntiforgery>();
+                services
+                    .AddAuthentication(options =>
+                    {
+                        options.DefaultAuthenticateScheme =
+                            TestAuthenticationHandler.SchemeName;
+                        options.DefaultChallengeScheme =
+                            TestAuthenticationHandler.SchemeName;
+                    })
+                    .AddScheme<
+                        AuthenticationSchemeOptions,
+                        TestAuthenticationHandler>(
+                        TestAuthenticationHandler.SchemeName,
+                        _ => { });
             });
         }
 
@@ -249,7 +350,8 @@ public sealed class GameEndpointsTests
                     VoteCount INTEGER NOT NULL,
                     MicroRatio REAL NOT NULL,
                     MesoRatio REAL NOT NULL,
-                    MacroRatio REAL NOT NULL
+                    MacroRatio REAL NOT NULL,
+                    UpdatedAtUtc TEXT NOT NULL
                 );
 
                 INSERT INTO DevelopmentGameInfo
@@ -260,7 +362,8 @@ public sealed class GameEndpointsTests
                 INSERT INTO SteamGames VALUES (1, 1234);
 
                 INSERT INTO GameVoteAggregates
-                VALUES (1, 2, 0.375, 0.34375, 0.28125);
+                VALUES
+                    (1, 2, 0.375, 0.34375, 0.28125, CURRENT_TIMESTAMP);
 
                 INSERT INTO Users VALUES
                     (10, 1),
@@ -276,5 +379,53 @@ public sealed class GameEndpointsTests
                 """;
             command.ExecuteNonQuery();
         }
+    }
+
+    private sealed class TestAuthenticationHandler(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder)
+        : AuthenticationHandler<AuthenticationSchemeOptions>(
+            options,
+            logger,
+            encoder)
+    {
+        public const string SchemeName = "Test";
+
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            if (!Request.Headers.TryGetValue(
+                "X-Test-UserId",
+                out var userId))
+            {
+                return Task.FromResult(AuthenticateResult.NoResult());
+            }
+
+            var identity = new ClaimsIdentity(
+                [new Claim(SteamClaims.UserId, userId.ToString())],
+                SchemeName);
+            var ticket = new AuthenticationTicket(
+                new ClaimsPrincipal(identity),
+                SchemeName);
+            return Task.FromResult(AuthenticateResult.Success(ticket));
+        }
+    }
+
+    private sealed class TestAntiforgery : IAntiforgery
+    {
+        public AntiforgeryTokenSet GetAndStoreTokens(HttpContext httpContext) =>
+            throw new NotSupportedException();
+
+        public AntiforgeryTokenSet GetTokens(HttpContext httpContext) =>
+            throw new NotSupportedException();
+
+        public Task<bool> IsRequestValidAsync(HttpContext httpContext) =>
+            Task.FromResult(true);
+
+        public void SetCookieTokenAndHeader(HttpContext httpContext) =>
+            throw new NotSupportedException();
+
+        public Task ValidateRequestAsync(HttpContext httpContext) =>
+            Task.CompletedTask;
     }
 }

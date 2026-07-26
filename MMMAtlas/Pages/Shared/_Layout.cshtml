@@ -18,12 +18,28 @@
             <a asp-page="/Index" asp-fragment="atlas">Explore the model</a>
             <a asp-page="/Index" asp-fragment="games">Test game API</a>
             <a asp-page="/Index" asp-fragment="about">About</a>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <a asp-page="/Dashboard">Dashboard</a>
+                <form method="post" asp-page="/Logout">
+                    <button type="submit">Sign out</button>
+                </form>
+            }
+            else
+            {
+                <a asp-page="/Login">Sign in through Steam</a>
+            }
         </nav>
     </header>
 
     <main>
         @RenderBody()
     </main>
+
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <partial name="_VoteDialog" />
+    }
 
     <footer class="site-footer">
         <span>MMM Atlas</span>

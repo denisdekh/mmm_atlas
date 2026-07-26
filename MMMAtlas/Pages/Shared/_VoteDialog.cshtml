@@ -1,0 +1,64 @@
+<dialog class="vote-dialog" data-vote-dialog aria-labelledby="vote-dialog-title">
+    <div class="vote-dialog-header">
+        <h2 id="vote-dialog-title" data-vote-title>Vote</h2>
+        <button type="button" data-vote-close aria-label="Close vote window">Close</button>
+    </div>
+
+    <div class="vote-dialog-game">
+        <img data-vote-icon alt="" width="64" height="64" hidden />
+    </div>
+
+    <form data-vote-form>
+        @Html.AntiForgeryToken()
+
+        <label class="vote-slider">
+            <span>Micro</span>
+            <input
+                type="range"
+                name="microScore"
+                min="0"
+                max="10"
+                step="0.1"
+                value="5.0" />
+            <output data-score-output="microScore">5.0</output>
+        </label>
+
+        <label class="vote-slider">
+            <span>Meso</span>
+            <input
+                type="range"
+                name="mesoScore"
+                min="0"
+                max="10"
+                step="0.1"
+                value="5.0" />
+            <output data-score-output="mesoScore">5.0</output>
+        </label>
+
+        <label class="vote-slider">
+            <span>Macro</span>
+            <input
+                type="range"
+                name="macroScore"
+                min="0"
+                max="10"
+                step="0.1"
+                value="5.0" />
+            <output data-score-output="macroScore">5.0</output>
+        </label>
+
+        <p class="vote-error" data-vote-error role="alert" hidden></p>
+
+        <div class="vote-dialog-actions">
+            <button type="button" data-vote-cancel>Cancel</button>
+            <button type="submit" data-vote-submit>Submit vote</button>
+        </div>
+    </form>
+</dialog>
+
+<div
+    class="vote-toast-region"
+    data-vote-toast-region
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"></div>

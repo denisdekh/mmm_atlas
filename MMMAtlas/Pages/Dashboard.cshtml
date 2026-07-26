@@ -1,0 +1,134 @@
+@page "/dashboard"
+@model MMMAtlas.Pages.DashboardModel
+@{
+    ViewData["Title"] = "Dashboard";
+    ViewData["Page"] = "dashboard";
+}
+
+<section>
+    <h1>Steam dashboard</h1>
+
+    @if (Model.Notice == "erased")
+    {
+        <p>Your stored Steam profile and library data has been cleared. Your submitted votes were retained.</p>
+    }
+    else if (Model.Notice == "preference-saved")
+    {
+        <p>Your data collection preference has been saved.</p>
+    }
+
+    @if (Model.Dashboard is null)
+    {
+        <p>Your Steam account could not be loaded.</p>
+    }
+    else
+    {
+        <section>
+            <h2>Profile</h2>
+
+            @if (Model.Dashboard.PersonaName is not null)
+            {
+                @if (Model.Dashboard.AvatarUrl is not null)
+                {
+                    <img
+                        src="@Model.Dashboard.AvatarUrl"
+                        alt=""
+                        width="96"
+                        height="96" />
+                }
+
+                <p>@Model.Dashboard.PersonaName</p>
+
+                @if (Model.Dashboard.ProfileUrl is not null)
+                {
+                    <p>
+                        <a href="@Model.Dashboard.ProfileUrl">Open Steam profile</a>
+                    </p>
+                }
+            }
+            else
+            {
+                <p>No Steam profile data is stored.</p>
+            }
+        </section>
+
+        <section>
+            <h2>Data collection</h2>
+
+            <form method="post" action="/api/me/steam-data/consent">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="enabled" value="false" />
+                <label>
+                    @if (Model.Dashboard.DataCollectionEnabled)
+                    {
+                        <input
+                            type="checkbox"
+                            name="enabled"
+                            value="true"
+                            checked />
+                    }
+                    else
+                    {
+                        <input
+                            type="checkbox"
+                            name="enabled"
+                            value="true" />
+                    }
+                    Allow Steam profile and library data collection
+                </label>
+                <p>
+                    Turning this off and saving immediately removes your cached
+                    Steam profile, library, and playtime. Your Steam ID, local
+                    account, submitted votes, and opt-out preference are
+                    retained so the app can honor your choice.
+                </p>
+                <button type="submit">Save preference</button>
+            </form>
+
+            @if (!Model.Dashboard.DataCollectionEnabled)
+            {
+                <p>
+                    Collection is disabled. Opt in above to fetch your profile
+                    and games again.
+                </p>
+            }
+        </section>
+
+        <section>
+            <h2>Most played games</h2>
+            <p>Library status: @Model.Dashboard.LibraryCheckStatus</p>
+
+            @if (Model.Dashboard.MostPlayedGames.Count == 0)
+            {
+                <p>No game data is stored.</p>
+            }
+            else
+            {
+                <ol>
+                    @foreach (var game in Model.Dashboard.MostPlayedGames)
+                    {
+                        var hasVote = game.MicroScore is not null;
+                        <li class="dashboard-game">
+                            <span>
+                                @game.Name —
+                                @((game.PlaytimeForeverMinutes / 60d).ToString("0.#")) hours
+                            </span>
+                            <button
+                                type="button"
+                                data-vote-trigger
+                                data-game-id="@game.GameId"
+                                data-game-title="@game.Name"
+                                data-game-icon="@game.IconUrl"
+                                data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)">
+                                @(hasVote ? "Amend vote" : "Submit vote")
+                            </button>
+                        </li>
+                    }
+                </ol>
+            }
+        </section>
+
+    }
+</section>
