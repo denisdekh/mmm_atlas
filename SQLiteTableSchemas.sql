@@ -1,3 +1,5 @@
+PRAGMA journal_mode = WAL;
+PRAGMA busy_timeout = 5000;
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS Users
@@ -125,6 +127,7 @@ CREATE TABLE IF NOT EXISTS Votes
     MicroScore   REAL    NOT NULL,
     MesoScore    REAL    NOT NULL,
     MacroScore   REAL    NOT NULL,
+    IsPublic     INTEGER NOT NULL DEFAULT 0,
     CreatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -134,12 +137,18 @@ CREATE TABLE IF NOT EXISTS Votes
         FOREIGN KEY (UserId)
         REFERENCES Users (UserId)
         ON DELETE CASCADE,
+    CONSTRAINT FK_Votes_GameId
+        FOREIGN KEY (GameId)
+        REFERENCES Games (GameId)
+        ON DELETE CASCADE,
     CONSTRAINT CK_Votes_MicroScore_Range
         CHECK (MicroScore BETWEEN 0.0 AND 10.0),
     CONSTRAINT CK_Votes_MesoScore_Range
         CHECK (MesoScore BETWEEN 0.0 AND 10.0),
     CONSTRAINT CK_Votes_MacroScore_Range
         CHECK (MacroScore BETWEEN 0.0 AND 10.0),
+    CONSTRAINT CK_Votes_IsPublic_Boolean
+        CHECK (IsPublic IN (0, 1)),
     CONSTRAINT CK_Votes_Scores_NotAllZero
         CHECK (MicroScore + MesoScore + MacroScore > 0.0)
 );

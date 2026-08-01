@@ -425,12 +425,23 @@ h2 {
     border-color: rgba(91, 193, 169, 0.55);
 }
 
-.game-card img {
+.game-card img,
+.game-card .game-image-placeholder {
     width: 100%;
     aspect-ratio: 1.75;
     border-radius: 0.55rem;
     background: var(--background);
     object-fit: cover;
+}
+
+.game-image-placeholder {
+    display: grid;
+    place-items: center;
+    background: var(--background);
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: -0.05em;
 }
 
 .game-card-copy {
@@ -521,6 +532,12 @@ h2 {
     aspect-ratio: 2.14;
     background: var(--background);
     object-fit: cover;
+}
+
+.game-detail-image.game-image-placeholder {
+    display: grid;
+    min-height: 16rem;
+    font-size: 2rem;
 }
 
 .game-detail-body {

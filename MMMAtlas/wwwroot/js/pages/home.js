@@ -96,14 +96,14 @@ function initializeGameApiDemo() {
     fetchJson("/api/games")
         .then((games) => {
             list.replaceChildren();
-            count.textContent = `${games.length} seeded ${games.length === 1 ? "game" : "games"}`;
+            count.textContent = `${games.length} rated ${games.length === 1 ? "game" : "games"}`;
 
             if (games.length === 0) {
                 const empty = document.createElement("p");
                 empty.className = "game-api-empty";
-                empty.textContent = "The API returned no development games.";
+                empty.textContent = "No games have community votes yet.";
                 list.append(empty);
-                setStatus("The game endpoint is available, but the seed is empty.");
+                setStatus("The game endpoint is available, but no votes have been submitted.");
                 return;
             }
 
@@ -123,7 +123,7 @@ function initializeGameApiDemo() {
             message.className = "game-api-error";
             message.textContent = error.message;
             list.replaceChildren(message);
-            renderDetailError(detail, "The development game API could not be loaded.");
+            renderDetailError(detail, "The community game data could not be loaded.");
             setStatus(error.message, "error");
         });
 }
@@ -158,10 +158,7 @@ function createGameCard(game) {
     button.dataset.gameId = game.gameId;
     button.setAttribute("aria-pressed", "false");
 
-    const image = document.createElement("img");
-    image.src = game.imageUrl;
-    image.alt = "";
-    image.loading = "lazy";
+    const image = createGameImage(game, "", true);
 
     const copy = document.createElement("span");
     copy.className = "game-card-copy";
@@ -211,10 +208,10 @@ function renderDetailError(detail, message) {
 }
 
 function renderGameDetail(detail, game, votes) {
-    const image = document.createElement("img");
-    image.className = "game-detail-image";
-    image.src = game.imageUrl;
-    image.alt = `${game.name} development artwork`;
+    const image = createGameImage(
+        game,
+        "game-detail-image",
+        false);
 
     const body = document.createElement("div");
     body.className = "game-detail-body";
@@ -262,7 +259,7 @@ function renderGameDetail(detail, game, votes) {
         for (const vote of votes) {
             const item = document.createElement("li");
             item.append(
-                createVoterLabel(vote.publicSteamId),
+                createVoterLabel(vote.publicProfileName),
                 createRawScore("Micro", vote.microScore, "micro"),
                 createRawScore("Meso", vote.mesoScore, "meso"),
                 createRawScore("Macro", vote.macroScore, "macro")
@@ -276,14 +273,29 @@ function renderGameDetail(detail, game, votes) {
     detail.replaceChildren(image, body);
 }
 
-function createVoterLabel(publicSteamId) {
+function createGameImage(game, className, decorative) {
+    if (!game.imageUrl) {
+        const placeholder = document.createElement("span");
+        placeholder.className = `${className} game-image-placeholder`.trim();
+        placeholder.setAttribute("aria-hidden", "true");
+        placeholder.textContent = "MMM";
+        return placeholder;
+    }
+
+    const image = document.createElement("img");
+    image.className = className;
+    image.src = game.imageUrl;
+    image.alt = decorative ? "" : `${game.name} artwork`;
+    image.loading = decorative ? "lazy" : "eager";
+    return image;
+}
+
+function createVoterLabel(publicProfileName) {
     const voter = document.createElement("span");
-    voter.className = publicSteamId
+    voter.className = publicProfileName
         ? "raw-voter raw-voter-public"
         : "raw-voter";
-    voter.textContent = publicSteamId
-        ? `Steam ${publicSteamId}`
-        : "Anonymous";
+    voter.textContent = publicProfileName || "Anonymous";
     return voter;
 }
 

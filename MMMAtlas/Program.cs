@@ -169,7 +169,10 @@ app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
-    await DevelopmentDatabase.InitializeAsync(database);
+    await DevelopmentDatabase.InitializeAsync(
+        database,
+        builder.Configuration.GetValue<bool>(
+            "DevelopmentData:SeedOnStartup"));
 }
 
 app.MapStaticAssets();

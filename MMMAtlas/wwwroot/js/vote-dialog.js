@@ -12,6 +12,7 @@ export function initializeVoteDialog() {
     const icon = dialog.querySelector("[data-vote-icon]");
     const error = dialog.querySelector("[data-vote-error]");
     const submitButton = dialog.querySelector("[data-vote-submit]");
+    const publicCheckbox = dialog.querySelector("[data-vote-public]");
     const toastRegion = document.querySelector("[data-vote-toast-region]");
     let gameId = null;
 
@@ -29,6 +30,7 @@ export function initializeVoteDialog() {
 
         title.textContent = trigger.dataset.gameTitle || "Vote";
         submitButton.textContent = hasVote ? "Amend vote" : "Submit vote";
+        publicCheckbox.checked = hasVote && trigger.dataset.isPublic === "true";
         error.hidden = true;
 
         for (const name of scoreNames) {
@@ -121,6 +123,7 @@ export function initializeVoteDialog() {
                     trigger.dataset[name] = Number(values[name]).toFixed(1);
                 }
 
+                trigger.dataset.isPublic = String(vote.isPublic);
                 trigger.textContent = "Amend vote";
             }
 

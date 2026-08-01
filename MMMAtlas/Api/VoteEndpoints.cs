@@ -14,8 +14,29 @@ public static class VoteEndpoints
         endpoints.MapPost("/api/me/votes/{gameId:long}", SubmitVoteAsync)
             .RequireAuthorization()
             .WithTags("Votes");
+        endpoints.MapPost("/api/me/votes/private", MakeAllPrivateAsync)
+            .RequireAuthorization()
+            .WithTags("Votes");
 
         return endpoints;
+    }
+
+    private static async Task<IResult> MakeAllPrivateAsync(
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        VotingManager manager,
+        CancellationToken cancellationToken)
+    {
+        await antiforgery.ValidateRequestAsync(httpContext);
+
+        var userId = GetUserId(httpContext.User);
+        var updatedVotes = await manager.MakeAllPrivateAsync(
+            userId,
+            cancellationToken);
+
+        return WantsHtml(httpContext.Request)
+            ? Results.Redirect("/dashboard?notice=votes-private")
+            : Results.Ok(new { UpdatedVotes = updatedVotes });
     }
 
     private static async Task<IResult> SubmitVoteAsync(
@@ -49,16 +70,19 @@ public static class VoteEndpoints
             });
         }
 
-        var userIdValue = httpContext.User.FindFirstValue(SteamClaims.UserId);
-        if (!long.TryParse(userIdValue, out var userId))
-        {
-            return Results.Unauthorized();
-        }
+        var userId = GetUserId(httpContext.User);
 
         var result = await manager.SubmitAsync(
             userId,
             gameId,
-            new VoteScores(microScore, mesoScore, macroScore),
+            new VoteScores(
+                microScore,
+                mesoScore,
+                macroScore,
+                form["isPublic"].Any(value => string.Equals(
+                    value,
+                    bool.TrueString,
+                    StringComparison.OrdinalIgnoreCase))),
             cancellationToken);
 
         return result is null
@@ -69,6 +93,7 @@ public static class VoteEndpoints
                 result.Scores.MicroScore,
                 result.Scores.MesoScore,
                 result.Scores.MacroScore,
+                result.Scores.IsPublic,
                 result.Amended));
     }
 
@@ -83,9 +108,27 @@ public static class VoteEndpoints
         && score is >= 0 and <= 10
         && decimal.Truncate(score * 10) == score * 10;
 
+    private static long GetUserId(ClaimsPrincipal principal)
+    {
+        var value = principal.FindFirstValue(SteamClaims.UserId);
+        return long.TryParse(value, out var userId)
+            ? userId
+            : throw new InvalidOperationException(
+                "The authentication cookie does not contain a valid user ID.");
+    }
+
+    private static bool WantsHtml(HttpRequest request) =>
+        request.HasFormContentType
+        || request.GetTypedHeaders().Accept?.Any(
+            value => string.Equals(
+                value.MediaType.Value,
+                "text/html",
+                StringComparison.OrdinalIgnoreCase)) == true;
+
     private sealed record VoteResponse(
         decimal MicroScore,
         decimal MesoScore,
         decimal MacroScore,
+        bool IsPublic,
         bool Amended);
 }

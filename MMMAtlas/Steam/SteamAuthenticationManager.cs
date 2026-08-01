@@ -182,7 +182,8 @@ public sealed class SteamAuthenticationManager(
                 library.LastPlayedAtUtc,
                 vote.MicroScore,
                 vote.MesoScore,
-                vote.MacroScore
+                vote.MacroScore,
+                COALESCE(vote.IsPublic, 0)
             FROM SteamLibraryGames AS library
             INNER JOIN SteamGames AS steam
                 ON steam.GameId = library.GameId
@@ -212,7 +213,8 @@ public sealed class SteamAuthenticationManager(
                 ReadNullableDateTimeOffset(gamesReader, 6),
                 gamesReader.IsDBNull(7) ? null : gamesReader.GetDouble(7),
                 gamesReader.IsDBNull(8) ? null : gamesReader.GetDouble(8),
-                gamesReader.IsDBNull(9) ? null : gamesReader.GetDouble(9)));
+                gamesReader.IsDBNull(9) ? null : gamesReader.GetDouble(9),
+                gamesReader.GetBoolean(10)));
         }
 
         return dashboard with { MostPlayedGames = games };
@@ -623,4 +625,5 @@ public sealed record SteamDashboardGame(
     DateTimeOffset? LastPlayedAtUtc,
     double? MicroScore,
     double? MesoScore,
-    double? MacroScore);
+    double? MacroScore,
+    bool IsPublic);

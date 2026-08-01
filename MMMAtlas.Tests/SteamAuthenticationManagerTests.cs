@@ -71,6 +71,7 @@ public sealed class SteamAuthenticationManagerTests
         Assert.AreEqual(8d, votedDashboard.MostPlayedGames[0].MicroScore);
         Assert.AreEqual(6d, votedDashboard.MostPlayedGames[0].MesoScore);
         Assert.AreEqual(2d, votedDashboard.MostPlayedGames[0].MacroScore);
+        Assert.IsFalse(votedDashboard.MostPlayedGames[0].IsPublic);
 
         await manager.EraseStoredDataAsync(
             firstSignIn.UserId,

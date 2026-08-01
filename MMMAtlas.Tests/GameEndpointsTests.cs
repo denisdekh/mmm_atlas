@@ -38,7 +38,7 @@ public sealed class GameEndpointsTests
         Assert.IsNotNull(votes);
         Assert.HasCount(2, votes);
         Assert.AreEqual(
-            new VoteResponse(8, 6, 2, "01234567"),
+            new VoteResponse(8, 6, 2, "Atlas Tester"),
             votes[0]);
         Assert.AreEqual(
             new VoteResponse(4, 5, 7, null),
@@ -154,6 +154,31 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
+    public async Task GetGamesUsesMainTablesWithoutDevelopmentMetadata()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var games = await client.GetFromJsonAsync<GameResponse[]>(
+            "/api/games");
+
+        Assert.IsNotNull(games);
+        var game = games.Single(candidate => candidate.GameId == 3);
+        Assert.AreEqual(9010, game.SteamAppId);
+        Assert.AreEqual("Real Table Game", game.Name);
+        Assert.AreEqual(
+            "Community ratings for Real Table Game.",
+            game.Summary);
+        Assert.AreEqual(
+            "https://example.test/icon.jpg",
+            game.ImageUrl);
+        Assert.AreEqual(1, game.VoteCount);
+        Assert.AreEqual(0.2, game.MicroRatio);
+        Assert.AreEqual(0.3, game.MesoRatio);
+        Assert.AreEqual(0.5, game.MacroRatio);
+    }
+
+    [TestMethod]
     public async Task EraseSteamDataRequiresAuthentication()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -205,7 +230,8 @@ public sealed class GameEndpointsTests
             {
                 ["microScore"] = "9.1",
                 ["mesoScore"] = "2.2",
-                ["macroScore"] = "3.3"
+                ["macroScore"] = "3.3",
+                ["isPublic"] = "true"
             }));
 
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
@@ -215,6 +241,7 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(9.1m, submitted.MicroScore);
         Assert.AreEqual(2.2m, submitted.MesoScore);
         Assert.AreEqual(3.3m, submitted.MacroScore);
+        Assert.IsTrue(submitted.IsPublic);
         Assert.IsTrue(submitted.Amended);
 
         var votes = await client.GetFromJsonAsync<VoteResponse[]>(
@@ -223,18 +250,76 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(9.1, votes[0].MicroScore);
         Assert.AreEqual(2.2, votes[0].MesoScore);
         Assert.AreEqual(3.3, votes[0].MacroScore);
+        Assert.AreEqual("Atlas Tester", votes[0].PublicProfileName);
+    }
+
+    [TestMethod]
+    public async Task SubmitVoteDefaultsToPrivate()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        var response = await client.PostAsync(
+            "/api/me/votes/2",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["microScore"] = "5.0",
+                ["mesoScore"] = "5.0",
+                ["macroScore"] = "5.0"
+            }));
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var submitted =
+            await response.Content.ReadFromJsonAsync<VoteSubmissionResponse>();
+        Assert.IsNotNull(submitted);
+        Assert.IsFalse(submitted.IsPublic);
+
+        var votes = await client.GetFromJsonAsync<VoteResponse[]>(
+            "/api/games/2/votes");
+        Assert.IsNotNull(votes);
+        Assert.HasCount(1, votes);
+        Assert.IsNull(votes[0].PublicProfileName);
+    }
+
+    [TestMethod]
+    public async Task MakeAllVotesPrivateRemovesPublicProfileNames()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        var response = await client.PostAsync(
+            "/api/me/votes/private",
+            new FormUrlEncodedContent([]));
+
+        Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.AreEqual(
+            "/dashboard?notice=votes-private",
+            response.Headers.Location?.OriginalString);
+
+        var votes = await client.GetFromJsonAsync<VoteResponse[]>(
+            "/api/games/1/votes");
+        Assert.IsNotNull(votes);
+        Assert.IsNull(votes[0].PublicProfileName);
+        Assert.AreEqual(8, votes[0].MicroScore);
     }
 
     private sealed record VoteResponse(
         double MicroScore,
         double MesoScore,
         double MacroScore,
-        string? PublicSteamId);
+        string? PublicProfileName);
 
     private sealed record VoteSubmissionResponse(
         decimal MicroScore,
         decimal MesoScore,
         decimal MacroScore,
+        bool IsPublic,
         bool Amended);
 
     private sealed record ProblemResponse(int Status, string Title);
@@ -321,6 +406,7 @@ public sealed class GameEndpointsTests
                     MicroScore REAL NOT NULL,
                     MesoScore REAL NOT NULL,
                     MacroScore REAL NOT NULL,
+                    IsPublic INTEGER NOT NULL DEFAULT 0,
                     CreatedAtUtc TEXT NOT NULL,
                     UpdatedAtUtc TEXT NOT NULL,
                     PRIMARY KEY (UserId, GameId)
@@ -335,13 +421,16 @@ public sealed class GameEndpointsTests
                 CREATE TABLE SteamAccounts
                 (
                     UserId INTEGER PRIMARY KEY,
-                    SteamId INTEGER NOT NULL UNIQUE
+                    SteamId INTEGER NOT NULL UNIQUE,
+                    PersonaName TEXT NULL
                 );
 
                 CREATE TABLE SteamGames
                 (
                     GameId INTEGER PRIMARY KEY,
-                    SteamAppId INTEGER NOT NULL
+                    SteamAppId INTEGER NOT NULL,
+                    Name TEXT NULL,
+                    IconUrl TEXT NULL
                 );
 
                 CREATE TABLE GameVoteAggregates
@@ -359,23 +448,33 @@ public sealed class GameEndpointsTests
                     (1, 'Test Game', 'Summary', 'image/png', X'00'),
                     (2, 'Game Without Votes', 'Summary', 'image/png', X'00');
 
-                INSERT INTO SteamGames VALUES (1, 1234);
+                INSERT INTO SteamGames VALUES
+                    (1, 1234, NULL, NULL),
+                    (2, 5678, NULL, NULL),
+                    (
+                        3,
+                        9010,
+                        'Real Table Game',
+                        'https://example.test/icon.jpg'
+                    );
 
                 INSERT INTO GameVoteAggregates
                 VALUES
-                    (1, 2, 0.375, 0.34375, 0.28125, CURRENT_TIMESTAMP);
+                    (1, 2, 0.375, 0.34375, 0.28125, CURRENT_TIMESTAMP),
+                    (3, 1, 0.2, 0.3, 0.5, CURRENT_TIMESTAMP);
 
                 INSERT INTO Users VALUES
                     (10, 1),
                     (20, 0);
 
                 INSERT INTO SteamAccounts VALUES
-                    (10, 81985529216486895),
-                    (20, 1147797409030816545);
+                    (10, 81985529216486895, 'Atlas Tester'),
+                    (20, 1147797409030816545, 'Private Tester');
 
                 INSERT INTO Votes VALUES
-                    (10, 1, 8, 6, 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-                    (20, 1, 4, 5, 7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                    (10, 1, 8, 6, 2, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                    (20, 1, 4, 5, 7, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+                    (10, 3, 2, 3, 5, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
                 """;
             command.ExecuteNonQuery();
         }

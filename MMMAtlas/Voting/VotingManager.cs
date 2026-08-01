@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Data.Sqlite;
 using MMMAtlas.Data;
 
@@ -5,6 +6,24 @@ namespace MMMAtlas.Voting;
 
 public sealed class VotingManager(DatabaseConnection database)
 {
+    public async Task<int> MakeAllPrivateAsync(
+        long userId,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new SqliteConnection(database.Value);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE Votes
+            SET IsPublic = 0,
+                UpdatedAtUtc = CURRENT_TIMESTAMP
+            WHERE UserId = $userId
+                AND IsPublic = 1;
+            """;
+        command.Parameters.AddWithValue("$userId", userId);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public async Task<VoteSubmissionResult?> SubmitAsync(
         long userId,
         long gameId,
@@ -37,23 +56,44 @@ public sealed class VotingManager(DatabaseConnection database)
             }
         }
 
-        var amended = false;
+        VoteScores? vote = null;
+        VoteAggregate? voteAggregate = null;
         await using (var existingCommand = connection.CreateCommand())
         {
             existingCommand.Transaction = transaction;
             existingCommand.CommandText = """
-                SELECT EXISTS
-                (
-                    SELECT 1
-                    FROM Votes
-                    WHERE UserId = $userId
-                        AND GameId = $gameId
-                );
+                SELECT
+                    VoteCount,
+                    MicroRatio,
+                    MesoRatio,
+                    MacroRatio,
+                    MicroScore, 
+                    MesoScore, 
+                    MacroScore
+                FROM GameVoteAggregates va 
+                    LEFT JOIN Votes v ON v.GameId = va.GameId AND v.UserId = $userId
+                WHERE va.GameId = $gameId
                 """;
             existingCommand.Parameters.AddWithValue("$userId", userId);
             existingCommand.Parameters.AddWithValue("$gameId", gameId);
-            amended = Convert.ToInt64(
-                await existingCommand.ExecuteScalarAsync(cancellationToken)) == 1;
+
+            await using var reader = await existingCommand.ExecuteReaderAsync(cancellationToken);
+            
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                voteAggregate = new VoteAggregate(
+                    VoteCount: reader.GetInt64(reader.GetOrdinal("VoteCount")),
+                    MicroRatio: reader.GetDouble(reader.GetOrdinal("MicroRatio")),
+                    MesoRatio: reader.GetDouble(reader.GetOrdinal("MesoRatio")),
+                    MacroRatio: reader.GetDouble(reader.GetOrdinal("MacroRatio")));
+
+                if (!reader.IsDBNull(reader.GetOrdinal("MicroScore")))
+                    vote = new VoteScores(
+                        MicroScore: (decimal) reader.GetDouble(reader.GetOrdinal("MicroScore")),
+                        MesoScore: (decimal) reader.GetDouble(reader.GetOrdinal("MesoScore")),
+                        MacroScore: (decimal) reader.GetDouble(reader.GetOrdinal("MacroScore")),
+                        IsPublic: scores.IsPublic);
+            }
         }
 
         await using (var voteCommand = connection.CreateCommand())
@@ -67,6 +107,7 @@ public sealed class VotingManager(DatabaseConnection database)
                     MicroScore,
                     MesoScore,
                     MacroScore,
+                    IsPublic,
                     CreatedAtUtc,
                     UpdatedAtUtc
                 )
@@ -77,6 +118,7 @@ public sealed class VotingManager(DatabaseConnection database)
                     $microScore,
                     $mesoScore,
                     $macroScore,
+                    $isPublic,
                     CURRENT_TIMESTAMP,
                     CURRENT_TIMESTAMP
                 )
@@ -84,20 +126,34 @@ public sealed class VotingManager(DatabaseConnection database)
                     MicroScore = excluded.MicroScore,
                     MesoScore = excluded.MesoScore,
                     MacroScore = excluded.MacroScore,
+                    IsPublic = excluded.IsPublic,
                     UpdatedAtUtc = CURRENT_TIMESTAMP;
                 """;
             voteCommand.Parameters.AddWithValue("$userId", userId);
             voteCommand.Parameters.AddWithValue("$gameId", gameId);
-            voteCommand.Parameters.AddWithValue(
-                "$microScore",
-                (double)scores.MicroScore);
-            voteCommand.Parameters.AddWithValue(
-                "$mesoScore",
-                (double)scores.MesoScore);
-            voteCommand.Parameters.AddWithValue(
-                "$macroScore",
-                (double)scores.MacroScore);
+            voteCommand.Parameters.AddWithValue("$microScore", (double)scores.MicroScore);
+            voteCommand.Parameters.AddWithValue("$mesoScore",  (double)scores.MesoScore);
+            voteCommand.Parameters.AddWithValue("$macroScore", (double)scores.MacroScore);
+            voteCommand.Parameters.AddWithValue("$isPublic", scores.IsPublic);
             await voteCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        long count = voteAggregate?.VoteCount ?? 0;
+        double MicroRatio = voteAggregate?.MicroRatio ?? 0;
+        double MesoRatio = voteAggregate?.MesoRatio ?? 0;
+        double MacroRatio = voteAggregate?.MacroRatio ?? 0;
+
+        if (vote != null)
+        {
+            MicroRatio = AddSample(RemoveSample(MicroRatio, count, (double)vote.MicroScore), count - 1, (double)scores.MicroScore);
+            MesoRatio = AddSample(RemoveSample(MesoRatio, count, (double)vote.MesoScore), count - 1, (double)scores.MesoScore);
+            MacroRatio = AddSample(RemoveSample(MacroRatio, count, (double)vote.MacroScore), count - 1, (double)scores.MacroScore);
+        } 
+        else
+        {
+            MicroRatio = AddSample(MicroRatio, count, (double)scores.MicroScore);
+            MesoRatio = AddSample(MesoRatio, count, (double)scores.MesoScore);
+            MacroRatio = AddSample(MacroRatio, count, (double)scores.MacroScore);
         }
 
         await using (var aggregateCommand = connection.CreateCommand())
@@ -135,14 +191,40 @@ public sealed class VotingManager(DatabaseConnection database)
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return new VoteSubmissionResult(scores, amended);
+        return new VoteSubmissionResult(scores, vote != null);
+    }
+
+    private double AddSample(double average, long count, double value)
+    {
+        average += (value - average) / (count + 1);
+        return average;
+    }
+
+    private double RemoveSample(double average, long count, double value)
+    {
+        if (count == 0)
+            throw new InvalidOperationException("There are no samples to remove.");
+
+        if (count == 1)
+            return 0;
+
+        return average + (average - value) / (count - 1);
     }
 }
+
+
 
 public sealed record VoteScores(
     decimal MicroScore,
     decimal MesoScore,
-    decimal MacroScore);
+    decimal MacroScore,
+    bool IsPublic = false);
+
+public sealed record VoteAggregate(
+    long VoteCount,
+    double MicroRatio,
+    double MesoRatio,
+    double MacroRatio);
 
 public sealed record VoteSubmissionResult(
     VoteScores Scores,

@@ -27,20 +27,39 @@ public static class GameEndpoints
     {
         const string sql = """
             SELECT
-                info.GameId,
+                steam.GameId,
                 steam.SteamAppId,
-                info.Name,
-                info.Summary,
+                COALESCE(
+                    steam.Name,
+                    info.Name,
+                    'Steam app ' || steam.SteamAppId
+                ),
+                COALESCE(
+                    info.Summary,
+                    'Community ratings for '
+                        || COALESCE(
+                            steam.Name,
+                            'Steam app ' || steam.SteamAppId
+                        )
+                        || '.'
+                ),
+                steam.IconUrl,
+                CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
                 aggregate.VoteCount,
                 aggregate.MicroRatio,
                 aggregate.MesoRatio,
                 aggregate.MacroRatio
-            FROM DevelopmentGameInfo AS info
-            INNER JOIN SteamGames AS steam
-                ON steam.GameId = info.GameId
-            LEFT JOIN GameVoteAggregates AS aggregate
-                ON aggregate.GameId = info.GameId
-            ORDER BY info.Name;
+            FROM SteamGames AS steam
+            INNER JOIN GameVoteAggregates AS aggregate
+                ON aggregate.GameId = steam.GameId
+            LEFT JOIN DevelopmentGameInfo AS info
+                ON info.GameId = steam.GameId
+            ORDER BY
+                COALESCE(
+                    steam.Name,
+                    info.Name,
+                    'Steam app ' || steam.SteamAppId
+                );
             """;
 
         await using var connection = new SqliteConnection(database.Value);
@@ -69,20 +88,34 @@ public static class GameEndpoints
     {
         const string sql = """
             SELECT
-                info.GameId,
+                steam.GameId,
                 steam.SteamAppId,
-                info.Name,
-                info.Summary,
+                COALESCE(
+                    steam.Name,
+                    info.Name,
+                    'Steam app ' || steam.SteamAppId
+                ),
+                COALESCE(
+                    info.Summary,
+                    'Community ratings for '
+                        || COALESCE(
+                            steam.Name,
+                            'Steam app ' || steam.SteamAppId
+                        )
+                        || '.'
+                ),
+                steam.IconUrl,
+                CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
                 aggregate.VoteCount,
                 aggregate.MicroRatio,
                 aggregate.MesoRatio,
                 aggregate.MacroRatio
-            FROM DevelopmentGameInfo AS info
-            INNER JOIN SteamGames AS steam
-                ON steam.GameId = info.GameId
-            LEFT JOIN GameVoteAggregates AS aggregate
-                ON aggregate.GameId = info.GameId
-            WHERE info.GameId = $gameId;
+            FROM SteamGames AS steam
+            INNER JOIN GameVoteAggregates AS aggregate
+                ON aggregate.GameId = steam.GameId
+            LEFT JOIN DevelopmentGameInfo AS info
+                ON info.GameId = steam.GameId
+            WHERE steam.GameId = $gameId;
             """;
 
         await using var connection = new SqliteConnection(database.Value);
@@ -93,7 +126,7 @@ public static class GameEndpoints
             SELECT EXISTS
             (
                 SELECT 1
-                FROM DevelopmentGameInfo
+                FROM SteamGames
                 WHERE GameId = $gameId
             );
             """;
@@ -179,7 +212,7 @@ public static class GameEndpoints
             SELECT EXISTS
             (
                 SELECT 1
-                FROM DevelopmentGameInfo
+                FROM SteamGames
                 WHERE GameId = $gameId
             );
             """;
@@ -190,16 +223,14 @@ public static class GameEndpoints
                 vote.MesoScore,
                 vote.MacroScore,
                 CASE
-                    WHEN voter.ShowVotesPublicly = 1
-                        AND account.SteamId IS NOT NULL
-                    THEN substr(printf('%016X', account.SteamId), 1, 8)
+                    WHEN vote.IsPublic = 1
+                        AND account.PersonaName IS NOT NULL
+                    THEN account.PersonaName
                     ELSE NULL
-                END AS PublicSteamId
+                END AS PublicProfileName
             FROM Votes AS vote
-            INNER JOIN Users AS voter
-                ON voter.UserId = vote.UserId
             LEFT JOIN SteamAccounts AS account
-                ON account.UserId = voter.UserId
+                ON account.UserId = vote.UserId
             WHERE vote.GameId = $gameId
             ORDER BY vote.UserId
             LIMIT $pageSize
@@ -243,7 +274,7 @@ public static class GameEndpoints
                 MicroScore: reader.GetDouble(0),
                 MesoScore: reader.GetDouble(1),
                 MacroScore: reader.GetDouble(2),
-                PublicSteamId:
+                PublicProfileName:
                     reader.IsDBNull(3) ? null : reader.GetString(3)));
         }
 
@@ -255,8 +286,13 @@ public static class GameEndpoints
         HttpRequest request)
     {
         var gameId = reader.GetInt64(0);
-        var imageUrl =
-            $"{request.PathBase}/api/games/{gameId}/image";
+        var storedImageUrl =
+            reader.IsDBNull(4) ? null : reader.GetString(4);
+        var hasDevelopmentImage = reader.GetBoolean(5);
+        var imageUrl = storedImageUrl
+            ?? (hasDevelopmentImage
+                ? $"{request.PathBase}/api/games/{gameId}/image"
+                : null);
 
         return new GameDto(
             GameId: gameId,
@@ -264,10 +300,10 @@ public static class GameEndpoints
             Name: reader.GetString(2),
             Summary: reader.GetString(3),
             ImageUrl: imageUrl,
-            VoteCount: reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
-            MicroRatio: ReadNullableDouble(reader, 5),
-            MesoRatio: ReadNullableDouble(reader, 6),
-            MacroRatio: ReadNullableDouble(reader, 7));
+            VoteCount: reader.GetInt32(6),
+            MicroRatio: reader.GetDouble(7),
+            MesoRatio: reader.GetDouble(8),
+            MacroRatio: reader.GetDouble(9));
     }
 
     private static double? ReadNullableDouble(
@@ -280,7 +316,7 @@ public static class GameEndpoints
         int SteamAppId,
         string Name,
         string Summary,
-        string ImageUrl,
+        string? ImageUrl,
         int VoteCount,
         double? MicroRatio,
         double? MesoRatio,
@@ -290,5 +326,5 @@ public static class GameEndpoints
         double MicroScore,
         double MesoScore,
         double MacroScore,
-        string? PublicSteamId);
+        string? PublicProfileName);
 }

@@ -16,6 +16,10 @@
     {
         <p>Your data collection preference has been saved.</p>
     }
+    else if (Model.Notice == "votes-private")
+    {
+        <p>All of your votes are now private.</p>
+    }
 
     @if (Model.Dashboard is null)
     {
@@ -50,6 +54,18 @@
             {
                 <p>No Steam profile data is stored.</p>
             }
+        </section>
+
+        <section>
+            <h2>Vote privacy</h2>
+            <p>
+                Private votes still contribute to game scores, but your Steam
+                profile name is not shown with them.
+            </p>
+            <form method="post" action="/api/me/votes/private">
+                @Html.AntiForgeryToken()
+                <button type="submit">Make all votes private</button>
+            </form>
         </section>
 
         <section>
@@ -121,7 +137,8 @@
                                 data-game-icon="@game.IconUrl"
                                 data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
                                 data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)">
+                                data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                data-is-public="@game.IsPublic.ToString().ToLowerInvariant()">
                                 @(hasVote ? "Amend vote" : "Submit vote")
                             </button>
                         </li>

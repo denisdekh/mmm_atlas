@@ -56,6 +56,7 @@ public sealed class VotingManagerTests
 
         Assert.IsNotNull(created);
         Assert.IsFalse(created.Amended);
+        Assert.IsFalse(created.Scores.IsPublic);
         Assert.AreEqual(
             new VoteAggregate(1, 0.5, 0.375, 0.125),
             ReadAggregate());
@@ -63,11 +64,13 @@ public sealed class VotingManagerTests
         var amended = await manager.SubmitAsync(
             1,
             1,
-            new VoteScores(4, 5, 1),
+            new VoteScores(4, 5, 1, IsPublic: true),
             CancellationToken.None);
 
         Assert.IsNotNull(amended);
         Assert.IsTrue(amended.Amended);
+        Assert.IsTrue(amended.Scores.IsPublic);
+        Assert.IsTrue(ReadVoteIsPublic(userId: 1));
         Assert.AreEqual(
             new VoteAggregate(1, 0.4, 0.5, 0.1),
             ReadAggregate());
@@ -83,6 +86,15 @@ public sealed class VotingManagerTests
         Assert.AreEqual(0.25, aggregate.MicroRatio, 0.000001);
         Assert.AreEqual(0.3, aggregate.MesoRatio, 0.000001);
         Assert.AreEqual(0.45, aggregate.MacroRatio, 0.000001);
+
+        var privateCount = await manager.MakeAllPrivateAsync(
+            1,
+            CancellationToken.None);
+
+        Assert.AreEqual(1, privateCount);
+        Assert.IsFalse(ReadVoteIsPublic(userId: 1));
+        Assert.AreEqual(2L, CountVotes());
+        Assert.AreEqual(aggregate, ReadAggregate());
     }
 
     [TestMethod]
@@ -131,6 +143,22 @@ public sealed class VotingManagerTests
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM Votes;";
         return (long)command.ExecuteScalar()!;
+    }
+
+    private bool ReadVoteIsPublic(long userId)
+    {
+        using var connection =
+            new SqliteConnection($"Data Source={_databasePath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT IsPublic
+            FROM Votes
+            WHERE UserId = $userId
+                AND GameId = 1;
+            """;
+        command.Parameters.AddWithValue("$userId", userId);
+        return Convert.ToBoolean(command.ExecuteScalar());
     }
 
     private sealed record VoteAggregate(

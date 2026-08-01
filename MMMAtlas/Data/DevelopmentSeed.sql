@@ -141,26 +141,28 @@ INSERT INTO Votes
     MicroScore,
     MesoScore,
     MacroScore,
+    IsPublic,
     CreatedAtUtc,
     UpdatedAtUtc
 )
 VALUES
-    (1, 1, 7.5, 9.0, 4.5, datetime('now', '-20 days'), datetime('now')),
-    (2, 1, 6.0, 9.5, 3.5, datetime('now', '-18 days'), datetime('now')),
-    (3, 1, 8.0, 8.5, 5.0, datetime('now', '-12 days'), datetime('now')),
-    (1, 2, 6.5, 8.0, 9.5, datetime('now', '-17 days'), datetime('now')),
-    (2, 2, 5.0, 7.5, 10.0, datetime('now', '-15 days'), datetime('now')),
-    (4, 2, 7.0, 6.0, 9.0, datetime('now', '-4 days'), datetime('now')),
-    (1, 3, 3.5, 7.0, 10.0, datetime('now', '-11 days'), datetime('now')),
-    (3, 3, 4.0, 6.5, 9.5, datetime('now', '-9 days'), datetime('now')),
-    (4, 3, 2.5, 7.5, 9.0, datetime('now', '-3 days'), datetime('now')),
-    (1, 4, 9.5, 7.0, 4.0, datetime('now', '-5 days'), datetime('now')),
-    (2, 4, 9.0, 8.0, 3.0, datetime('now', '-4 days'), datetime('now')),
-    (3, 4, 10.0, 6.5, 3.5, datetime('now', '-3 days'), datetime('now'))
+    (1, 1, 7.5, 9.0, 4.5, 1, datetime('now', '-20 days'), datetime('now')),
+    (2, 1, 6.0, 9.5, 3.5, 0, datetime('now', '-18 days'), datetime('now')),
+    (3, 1, 8.0, 8.5, 5.0, 1, datetime('now', '-12 days'), datetime('now')),
+    (1, 2, 6.5, 8.0, 9.5, 1, datetime('now', '-17 days'), datetime('now')),
+    (2, 2, 5.0, 7.5, 10.0, 0, datetime('now', '-15 days'), datetime('now')),
+    (4, 2, 7.0, 6.0, 9.0, 0, datetime('now', '-4 days'), datetime('now')),
+    (1, 3, 3.5, 7.0, 10.0, 1, datetime('now', '-11 days'), datetime('now')),
+    (3, 3, 4.0, 6.5, 9.5, 1, datetime('now', '-9 days'), datetime('now')),
+    (4, 3, 2.5, 7.5, 9.0, 0, datetime('now', '-3 days'), datetime('now')),
+    (1, 4, 9.5, 7.0, 4.0, 1, datetime('now', '-5 days'), datetime('now')),
+    (2, 4, 9.0, 8.0, 3.0, 0, datetime('now', '-4 days'), datetime('now')),
+    (3, 4, 10.0, 6.5, 3.5, 1, datetime('now', '-3 days'), datetime('now'))
 ON CONFLICT (UserId, GameId) DO UPDATE SET
     MicroScore = excluded.MicroScore,
     MesoScore = excluded.MesoScore,
     MacroScore = excluded.MacroScore,
+    IsPublic = excluded.IsPublic,
     UpdatedAtUtc = excluded.UpdatedAtUtc;
 
 INSERT INTO GameVoteAggregates

@@ -13,6 +13,7 @@ public static class DevelopmentDatabase
 
     public static async Task InitializeAsync(
         DatabaseConnection database,
+        bool seedData,
         CancellationToken cancellationToken = default)
     {
         await using var connection = new SqliteConnection(database.Value);
@@ -27,14 +28,24 @@ public static class DevelopmentDatabase
             connection,
             cancellationToken);
 
+        await EnsureColumnAsync(
+            connection,
+            "Votes",
+            "IsPublic",
+            "INTEGER NOT NULL DEFAULT 0 CHECK (IsPublic IN (0, 1))",
+            cancellationToken);
+
         await EnsureSteamDataColumnsAsync(
             connection,
             cancellationToken);
 
-        await ExecuteResourceAsync(
-            connection,
-            SeedResourceName,
-            cancellationToken);
+        if (seedData)
+        {
+            await ExecuteResourceAsync(
+                connection,
+                SeedResourceName,
+                cancellationToken);
+        }
     }
 
     private static async Task ExecuteResourceAsync(

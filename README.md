@@ -2,8 +2,8 @@
 
 MMM Atlas is an ASP.NET Core website for mapping games by their Micro, Meso,
 and Macro characteristics. The current development build includes a local
-SQLite database, seeded game data, API endpoints, and a browser-based API test
-panel on the home page.
+SQLite database, Steam integration, voting endpoints, and a browser-based
+community vote panel on the home page.
 
 ## Prerequisites
 
@@ -48,12 +48,25 @@ automatically:
 
 1. Creates `MMMAtlas/App_Data/mmm-atlas-development.db`.
 2. Applies the schema in `SQLiteTableSchemas.sql`.
-3. Runs the idempotent `MMMAtlas/Data/DevelopmentSeed.sql` script.
-4. Loads four games with test images, four users, twelve votes, ownership
-   records, and aggregate statistics.
 
 The generated database and local ASP.NET data-protection keys are ignored by
 Git.
+
+The frontend reads rated games and votes from the main application tables.
+Development seed data is not loaded by default.
+
+To opt into the retained seed script for UI testing, set the development
+configuration flag before starting the application:
+
+```powershell
+$env:DevelopmentData__SeedOnStartup = "true"
+dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
+```
+
+The idempotent `MMMAtlas/Data/DevelopmentSeed.sql` script loads four games with
+test images, four users, twelve votes, ownership records, and aggregate
+statistics. Clear the environment variable or set it to `false` to return to
+the normal startup behavior.
 
 ## HTTPS development
 
@@ -105,7 +118,9 @@ rm -f MMMAtlas/App_Data/mmm-atlas-development.db-wal
 dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
 ```
 
-The next Development startup recreates and reseeds the database.
+The next Development startup recreates the schema. It remains empty unless
+real Steam activity populates it or `DevelopmentData__SeedOnStartup` is
+explicitly enabled.
 
 ## Restored application packages
 
