@@ -56,50 +56,125 @@ public sealed class VotingManager(DatabaseConnection database)
             }
         }
 
-        VoteScores? vote = null;
-        VoteAggregate? voteAggregate = null;
-        await using (var existingCommand = connection.CreateCommand())
+        bool amended;
+        await using (var submissionCommand = connection.CreateCommand())
         {
-            existingCommand.Transaction = transaction;
-            existingCommand.CommandText = """
-                SELECT
+            submissionCommand.Transaction = transaction;
+            submissionCommand.CommandText = """
+                INSERT INTO GameVoteAggregates
+                (
+                    GameId,
                     VoteCount,
                     MicroRatio,
                     MesoRatio,
                     MacroRatio,
-                    MicroScore, 
-                    MesoScore, 
-                    MacroScore
-                FROM GameVoteAggregates va 
-                    LEFT JOIN Votes v ON v.GameId = va.GameId AND v.UserId = $userId
-                WHERE va.GameId = $gameId
-                """;
-            existingCommand.Parameters.AddWithValue("$userId", userId);
-            existingCommand.Parameters.AddWithValue("$gameId", gameId);
+                    UpdatedAtUtc
+                )
+                VALUES
+                (
+                    $gameId,
+                    1,
+                    $microScore / ($microScore + $mesoScore + $macroScore),
+                    $mesoScore / ($microScore + $mesoScore + $macroScore),
+                    $macroScore / ($microScore + $mesoScore + $macroScore),
+                    CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (GameId) DO UPDATE SET
+                    VoteCount = GameVoteAggregates.VoteCount
+                        + CASE WHEN EXISTS
+                            (
+                                SELECT 1
+                                FROM Votes
+                                WHERE UserId = $userId
+                                    AND GameId = $gameId
+                            )
+                            THEN 0
+                            ELSE 1
+                        END,
+                    MicroRatio = CASE WHEN EXISTS
+                        (
+                            SELECT 1
+                            FROM Votes
+                            WHERE UserId = $userId
+                                AND GameId = $gameId
+                        )
+                        THEN GameVoteAggregates.MicroRatio
+                            + (
+                                excluded.MicroRatio
+                                - (
+                                    SELECT
+                                        MicroScore
+                                        / (MicroScore + MesoScore + MacroScore)
+                                    FROM Votes
+                                    WHERE UserId = $userId
+                                        AND GameId = $gameId
+                                )
+                            ) / GameVoteAggregates.VoteCount
+                        ELSE GameVoteAggregates.MicroRatio
+                            + (
+                                excluded.MicroRatio
+                                - GameVoteAggregates.MicroRatio
+                            ) / (GameVoteAggregates.VoteCount + 1)
+                    END,
+                    MesoRatio = CASE WHEN EXISTS
+                        (
+                            SELECT 1
+                            FROM Votes
+                            WHERE UserId = $userId
+                                AND GameId = $gameId
+                        )
+                        THEN GameVoteAggregates.MesoRatio
+                            + (
+                                excluded.MesoRatio
+                                - (
+                                    SELECT
+                                        MesoScore
+                                        / (MicroScore + MesoScore + MacroScore)
+                                    FROM Votes
+                                    WHERE UserId = $userId
+                                        AND GameId = $gameId
+                                )
+                            ) / GameVoteAggregates.VoteCount
+                        ELSE GameVoteAggregates.MesoRatio
+                            + (
+                                excluded.MesoRatio
+                                - GameVoteAggregates.MesoRatio
+                            ) / (GameVoteAggregates.VoteCount + 1)
+                    END,
+                    MacroRatio = CASE WHEN EXISTS
+                        (
+                            SELECT 1
+                            FROM Votes
+                            WHERE UserId = $userId
+                                AND GameId = $gameId
+                        )
+                        THEN GameVoteAggregates.MacroRatio
+                            + (
+                                excluded.MacroRatio
+                                - (
+                                    SELECT
+                                        MacroScore
+                                        / (MicroScore + MesoScore + MacroScore)
+                                    FROM Votes
+                                    WHERE UserId = $userId
+                                        AND GameId = $gameId
+                                )
+                            ) / GameVoteAggregates.VoteCount
+                        ELSE GameVoteAggregates.MacroRatio
+                            + (
+                                excluded.MacroRatio
+                                - GameVoteAggregates.MacroRatio
+                            ) / (GameVoteAggregates.VoteCount + 1)
+                    END,
+                    UpdatedAtUtc = excluded.UpdatedAtUtc
+                RETURNING EXISTS
+                (
+                    SELECT 1
+                    FROM Votes
+                    WHERE UserId = $userId
+                        AND GameId = $gameId
+                ) AS Amended;
 
-            await using var reader = await existingCommand.ExecuteReaderAsync(cancellationToken);
-            
-            if (await reader.ReadAsync(cancellationToken))
-            {
-                voteAggregate = new VoteAggregate(
-                    VoteCount: reader.GetInt64(reader.GetOrdinal("VoteCount")),
-                    MicroRatio: reader.GetDouble(reader.GetOrdinal("MicroRatio")),
-                    MesoRatio: reader.GetDouble(reader.GetOrdinal("MesoRatio")),
-                    MacroRatio: reader.GetDouble(reader.GetOrdinal("MacroRatio")));
-
-                if (!reader.IsDBNull(reader.GetOrdinal("MicroScore")))
-                    vote = new VoteScores(
-                        MicroScore: (decimal) reader.GetDouble(reader.GetOrdinal("MicroScore")),
-                        MesoScore: (decimal) reader.GetDouble(reader.GetOrdinal("MesoScore")),
-                        MacroScore: (decimal) reader.GetDouble(reader.GetOrdinal("MacroScore")),
-                        IsPublic: scores.IsPublic);
-            }
-        }
-
-        await using (var voteCommand = connection.CreateCommand())
-        {
-            voteCommand.Transaction = transaction;
-            voteCommand.CommandText = """
                 INSERT INTO Votes
                 (
                     UserId,
@@ -127,88 +202,43 @@ public sealed class VotingManager(DatabaseConnection database)
                     MesoScore = excluded.MesoScore,
                     MacroScore = excluded.MacroScore,
                     IsPublic = excluded.IsPublic,
-                    UpdatedAtUtc = CURRENT_TIMESTAMP;
-                """;
-            voteCommand.Parameters.AddWithValue("$userId", userId);
-            voteCommand.Parameters.AddWithValue("$gameId", gameId);
-            voteCommand.Parameters.AddWithValue("$microScore", (double)scores.MicroScore);
-            voteCommand.Parameters.AddWithValue("$mesoScore",  (double)scores.MesoScore);
-            voteCommand.Parameters.AddWithValue("$macroScore", (double)scores.MacroScore);
-            voteCommand.Parameters.AddWithValue("$isPublic", scores.IsPublic);
-            await voteCommand.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        long count = voteAggregate?.VoteCount ?? 0;
-        double MicroRatio = voteAggregate?.MicroRatio ?? 0;
-        double MesoRatio = voteAggregate?.MesoRatio ?? 0;
-        double MacroRatio = voteAggregate?.MacroRatio ?? 0;
-
-        if (vote != null)
-        {
-            MicroRatio = AddSample(RemoveSample(MicroRatio, count, (double)vote.MicroScore), count - 1, (double)scores.MicroScore);
-            MesoRatio = AddSample(RemoveSample(MesoRatio, count, (double)vote.MesoScore), count - 1, (double)scores.MesoScore);
-            MacroRatio = AddSample(RemoveSample(MacroRatio, count, (double)vote.MacroScore), count - 1, (double)scores.MacroScore);
-        } 
-        else
-        {
-            MicroRatio = AddSample(MicroRatio, count, (double)scores.MicroScore);
-            MesoRatio = AddSample(MesoRatio, count, (double)scores.MesoScore);
-            MacroRatio = AddSample(MacroRatio, count, (double)scores.MacroScore);
-        }
-
-        await using (var aggregateCommand = connection.CreateCommand())
-        {
-            aggregateCommand.Transaction = transaction;
-            aggregateCommand.CommandText = """
-                INSERT INTO GameVoteAggregates
-                (
-                    GameId,
-                    VoteCount,
-                    MicroRatio,
-                    MesoRatio,
-                    MacroRatio,
-                    UpdatedAtUtc
-                )
-                SELECT
-                    GameId,
-                    COUNT(*),
-                    AVG(MicroScore / (MicroScore + MesoScore + MacroScore)),
-                    AVG(MesoScore / (MicroScore + MesoScore + MacroScore)),
-                    AVG(MacroScore / (MicroScore + MesoScore + MacroScore)),
-                    CURRENT_TIMESTAMP
-                FROM Votes
-                WHERE GameId = $gameId
-                GROUP BY GameId
-                ON CONFLICT (GameId) DO UPDATE SET
-                    VoteCount = excluded.VoteCount,
-                    MicroRatio = excluded.MicroRatio,
-                    MesoRatio = excluded.MesoRatio,
-                    MacroRatio = excluded.MacroRatio,
                     UpdatedAtUtc = excluded.UpdatedAtUtc;
                 """;
-            aggregateCommand.Parameters.AddWithValue("$gameId", gameId);
-            await aggregateCommand.ExecuteNonQueryAsync(cancellationToken);
+            submissionCommand.Parameters.AddWithValue("$userId", userId);
+            submissionCommand.Parameters.AddWithValue("$gameId", gameId);
+            submissionCommand.Parameters.AddWithValue(
+                "$microScore",
+                (double)scores.MicroScore);
+            submissionCommand.Parameters.AddWithValue(
+                "$mesoScore",
+                (double)scores.MesoScore);
+            submissionCommand.Parameters.AddWithValue(
+                "$macroScore",
+                (double)scores.MacroScore);
+            submissionCommand.Parameters.AddWithValue(
+                "$isPublic",
+                scores.IsPublic);
+
+            await using var reader =
+                await submissionCommand.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                throw new InvalidOperationException(
+                    "The aggregate update did not return a result.");
+            }
+
+            amended = reader.GetBoolean(reader.GetOrdinal("Amended"));
+
+            while (await reader.NextResultAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                }
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return new VoteSubmissionResult(scores, vote != null);
-    }
-
-    private double AddSample(double average, long count, double value)
-    {
-        average += (value - average) / (count + 1);
-        return average;
-    }
-
-    private double RemoveSample(double average, long count, double value)
-    {
-        if (count == 0)
-            throw new InvalidOperationException("There are no samples to remove.");
-
-        if (count == 1)
-            return 0;
-
-        return average + (average - value) / (count - 1);
+        return new VoteSubmissionResult(scores, amended);
     }
 }
 
@@ -219,12 +249,6 @@ public sealed record VoteScores(
     decimal MesoScore,
     decimal MacroScore,
     bool IsPublic = false);
-
-public sealed record VoteAggregate(
-    long VoteCount,
-    double MicroRatio,
-    double MesoRatio,
-    double MacroRatio);
 
 public sealed record VoteSubmissionResult(
     VoteScores Scores,

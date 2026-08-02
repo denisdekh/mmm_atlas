@@ -110,6 +110,31 @@ public sealed class VotingManagerTests
         Assert.AreEqual(0L, CountVotes());
     }
 
+    [TestMethod]
+    public async Task ConcurrentSubmissionsDoNotLoseAggregateUpdates()
+    {
+        var manager = CreateManager();
+
+        await Task.WhenAll(
+            manager.SubmitAsync(
+                1,
+                1,
+                new VoteScores(8, 6, 2),
+                CancellationToken.None),
+            manager.SubmitAsync(
+                2,
+                1,
+                new VoteScores(1, 1, 8),
+                CancellationToken.None));
+
+        var aggregate = ReadAggregate();
+        Assert.AreEqual(2, aggregate.VoteCount);
+        Assert.AreEqual(0.3, aggregate.MicroRatio, 0.000001);
+        Assert.AreEqual(0.2375, aggregate.MesoRatio, 0.000001);
+        Assert.AreEqual(0.4625, aggregate.MacroRatio, 0.000001);
+        Assert.AreEqual(2L, CountVotes());
+    }
+
     private VotingManager CreateManager() =>
         new(DatabaseConnection.Create(
             $"Data Source={_databasePath};Foreign Keys=True",
