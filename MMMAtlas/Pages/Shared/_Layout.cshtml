@@ -7,7 +7,9 @@
     <title>@ViewData["Title"] · MMM Atlas</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-<body data-page="@ViewData["Page"]">
+<body
+    data-page="@ViewData["Page"]"
+    data-authenticated="@((User.Identity?.IsAuthenticated == true).ToString().ToLowerInvariant())">
     <header class="site-header">
         <a class="brand" asp-page="/Index" aria-label="MMM Atlas home">
             <span class="brand-mark" aria-hidden="true">M³</span>
@@ -40,6 +42,7 @@
     {
         <partial name="_VoteDialog" />
     }
+    <partial name="_GameDetailDialog" />
 
     <footer class="site-footer">
         <span>MMM Atlas</span>

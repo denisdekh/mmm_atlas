@@ -126,7 +126,20 @@
                         var hasVote = game.MicroScore is not null;
                         <li class="dashboard-game">
                             <span>
-                                @game.Name —
+                                @if (!game.NeedsAtlasIcon)
+                                {
+                                    <button
+                                        type="button"
+                                        class="game-name-button"
+                                        data-game-detail-trigger
+                                        data-game-id="@game.GameId"
+                                        data-game-title="@game.Name">@game.Name</button>
+                                }
+                                else
+                                {
+                                    @game.Name
+                                }
+                                —
                                 @((game.PlaytimeForeverMinutes / 60d).ToString("0.#")) hours
                             </span>
                             <button

@@ -324,10 +324,12 @@ public static class GameEndpoints
 
     private static async Task<IResult> GetGameVotesAsync(
         long gameId,
+        HttpContext httpContext,
         DatabaseConnection database,
         CancellationToken cancellationToken,
         int page = 1,
-        int pageSize = 50)
+        int pageSize = 50,
+        bool publicOnly = false)
     {
         if (page < 1 || pageSize is < 1 or > 100)
         {
@@ -361,6 +363,15 @@ public static class GameEndpoints
             LEFT JOIN SteamAccounts AS account
                 ON account.UserId = vote.UserId
             WHERE vote.GameId = $gameId
+                AND
+                (
+                    $publicOnly = 0
+                    OR
+                    (
+                        vote.IsPublic = 1
+                        AND account.PersonaName IS NOT NULL
+                    )
+                )
             ORDER BY vote.UserId
             LIMIT $pageSize
             OFFSET $offset;
@@ -385,6 +396,34 @@ public static class GameEndpoints
             }
         }
 
+        await using (var countCommand = connection.CreateCommand())
+        {
+            countCommand.CommandText = """
+                SELECT COUNT(*)
+                FROM Votes AS vote
+                LEFT JOIN SteamAccounts AS account
+                    ON account.UserId = vote.UserId
+                WHERE vote.GameId = $gameId
+                    AND
+                    (
+                        $publicOnly = 0
+                        OR
+                        (
+                            vote.IsPublic = 1
+                            AND account.PersonaName IS NOT NULL
+                        )
+                    );
+                """;
+            countCommand.Parameters.AddWithValue("$gameId", gameId);
+            countCommand.Parameters.AddWithValue(
+                "$publicOnly",
+                publicOnly ? 1 : 0);
+            var totalCount = Convert.ToInt32(
+                await countCommand.ExecuteScalarAsync(cancellationToken));
+            httpContext.Response.Headers["X-Total-Count"] =
+                totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.Parameters.AddWithValue("$gameId", gameId);
@@ -392,6 +431,7 @@ public static class GameEndpoints
         command.Parameters.AddWithValue(
             "$offset",
             (long)(page - 1) * pageSize);
+        command.Parameters.AddWithValue("$publicOnly", publicOnly ? 1 : 0);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);

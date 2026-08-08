@@ -65,8 +65,8 @@
             <h2>Games rated by the community.</h2>
         </div>
         <p class="game-api-intro">
-            This view reads game statistics and individual votes from the main
-            application tables.
+            Select a game to see its library card, release details, axis ratios,
+            and public votes.
         </p>
     </div>
 
@@ -74,21 +74,12 @@
         Loading games from <code>/api/games</code>&hellip;
     </p>
 
-    <div class="game-api-layout">
-        <div class="game-list-panel">
+    <div class="game-list-panel game-list-panel-standalone">
             <div class="game-list-heading">
-                <strong>Available games</strong>
+                <strong>Voted games</strong>
                 <span data-game-count>Waiting for API</span>
             </div>
             <div class="game-list" data-game-list aria-live="polite"></div>
-        </div>
-
-        <article class="game-detail" data-game-detail aria-live="polite">
-            <div class="game-detail-placeholder">
-                <span aria-hidden="true">MMM</span>
-                <p>Select a rated game to inspect its details and raw votes.</p>
-            </div>
-        </article>
     </div>
 
     <noscript>

@@ -47,6 +47,28 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
+    public async Task GetPublicVotesFiltersPrivateVotesAndReturnsTotalCount()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync(
+            "/api/games/1/votes?publicOnly=true&pageSize=20");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(
+            "1",
+            response.Headers.GetValues("X-Total-Count").Single());
+
+        var votes = await response.Content.ReadFromJsonAsync<VoteResponse[]>();
+        Assert.IsNotNull(votes);
+        Assert.HasCount(1, votes);
+        Assert.AreEqual(
+            new VoteResponse(8, 6, 2, "Atlas Tester"),
+            votes[0]);
+    }
+
+    [TestMethod]
     public async Task GetVotesReturnsProblemDetailsWhenGameDoesNotExist()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -220,6 +242,41 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
+    public async Task GetOwnedGamesRequiresAuthentication()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+
+        var response = await client.GetAsync("/api/me/games");
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task GetOwnedGamesReturnsVoteStateForTheFrontendCache()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        var games = await client.GetFromJsonAsync<OwnedGameResponse[]>(
+            "/api/me/games");
+
+        Assert.IsNotNull(games);
+        Assert.HasCount(2, games);
+        Assert.AreEqual(
+            new OwnedGameResponse(1, true, 8, 6, 2, true),
+            games[0]);
+        Assert.AreEqual(
+            new OwnedGameResponse(2, false, null, null, null, false),
+            games[1]);
+    }
+
+    [TestMethod]
     public async Task SubmitVoteAmendsTheUsersVote()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -360,6 +417,14 @@ public sealed class GameEndpointsTests
         decimal MacroScore,
         bool IsPublic,
         bool Amended);
+
+    private sealed record OwnedGameResponse(
+        long GameId,
+        bool HasVoted,
+        double? MicroScore,
+        double? MesoScore,
+        double? MacroScore,
+        bool IsPublic);
 
     private sealed record ProblemResponse(int Status, string Title);
 
@@ -527,6 +592,17 @@ public sealed class GameEndpointsTests
                     UpdatedAtUtc TEXT NOT NULL
                 );
 
+                CREATE TABLE SteamLibraryGames
+                (
+                    UserId INTEGER NOT NULL,
+                    GameId INTEGER NOT NULL,
+                    PlaytimeForeverMinutes INTEGER NOT NULL,
+                    PlaytimeTwoWeeksMinutes INTEGER NULL,
+                    LastPlayedAtUtc TEXT NULL,
+                    VerifiedAtUtc TEXT NOT NULL,
+                    PRIMARY KEY (UserId, GameId)
+                );
+
                 INSERT INTO DevelopmentGameInfo
                 VALUES
                     (1, 'Test Game', 'Summary', 'image/png', X'00'),
@@ -561,6 +637,11 @@ public sealed class GameEndpointsTests
                     (10, 1, 8, 6, 2, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
                     (20, 1, 4, 5, 7, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
                     (10, 3, 2, 3, 5, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+                INSERT INTO SteamLibraryGames VALUES
+                    (10, 1, 120, NULL, NULL, CURRENT_TIMESTAMP),
+                    (10, 2, 60, NULL, NULL, CURRENT_TIMESTAMP),
+                    (20, 3, 30, NULL, NULL, CURRENT_TIMESTAMP);
                 """;
             command.ExecuteNonQuery();
         }

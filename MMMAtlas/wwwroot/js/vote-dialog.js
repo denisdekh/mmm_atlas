@@ -1,3 +1,5 @@
+import { updateCachedVote } from "./user-games-cache.js";
+
 const scoreNames = ["microScore", "mesoScore", "macroScore"];
 const cropCanvasSize = 300;
 const cropPreviewDiameter = 280;
@@ -129,6 +131,7 @@ export function initializeVoteDialog() {
             }
 
             const vote = await response.json();
+            updateCachedVote(gameId, vote);
             updateVoteTriggers(vote, formData.has("atlasIcon"));
             pendingFormData = null;
             cropImage = null;
@@ -145,6 +148,9 @@ export function initializeVoteDialog() {
                 cropDialog.close();
             }
             showToast("Your vote was submitted.");
+            document.dispatchEvent(new CustomEvent("mmm-atlas:vote-submitted", {
+                detail: { gameId, vote }
+            }));
         } catch (submissionError) {
             showSubmissionError(submissionError);
         } finally {

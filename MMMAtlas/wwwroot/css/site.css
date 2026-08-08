@@ -376,6 +376,13 @@ h2 {
     border-right: 1px solid var(--line);
 }
 
+.game-list-panel-standalone {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 1.5rem;
+    background: var(--surface);
+}
+
 .game-list-heading,
 .raw-votes-heading {
     display: flex;
@@ -409,20 +416,14 @@ h2 {
     border-radius: 0.9rem;
     background: transparent;
     color: var(--text);
-    cursor: pointer;
     text-align: left;
     transition: border-color 160ms ease, background 160ms ease;
 }
 
 .game-card:hover,
-.game-card:focus-visible,
-.game-card[aria-pressed="true"] {
+.game-card:focus-within {
     border-color: var(--line);
     background: var(--surface-raised);
-}
-
-.game-card[aria-pressed="true"] {
-    border-color: rgba(91, 193, 169, 0.55);
 }
 
 .game-card img,
@@ -453,10 +454,33 @@ h2 {
 }
 
 .game-card-copy strong,
+.game-card-copy .game-name-button,
 .game-card-copy > span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.game-name-button {
+    width: fit-content;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 0.2em;
+}
+
+.game-name-button:hover,
+.game-name-button:focus-visible {
+    color: var(--macro);
+    text-decoration-color: currentColor;
 }
 
 .game-card-copy > span {
@@ -709,6 +733,199 @@ h2 {
     margin-right: 0.75rem;
 }
 
+.game-detail-dialog {
+    width: min(calc(100% - 2rem), 78rem);
+    max-width: none;
+    max-height: min(90vh, 58rem);
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--surface-raised);
+    color: var(--text);
+}
+
+.game-detail-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.78);
+}
+
+.game-detail-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--line);
+}
+
+.game-detail-dialog-header h2 {
+    margin: 0;
+    overflow: hidden;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.game-detail-dialog-content {
+    display: grid;
+    grid-template-columns: minmax(18rem, 37.5rem) minmax(0, 1fr);
+    max-height: calc(min(90vh, 58rem) - 4.5rem);
+    overflow-y: auto;
+}
+
+.game-detail-dialog-message {
+    grid-column: 1 / -1;
+    min-height: 22rem;
+    display: grid;
+    margin: 0;
+    padding: 3rem;
+    place-content: center;
+    color: var(--muted);
+    text-align: center;
+}
+
+.game-detail-dialog-error {
+    color: #ff9e92;
+}
+
+.game-detail-artwork {
+    background: var(--background);
+}
+
+.game-detail-artwork img {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+    object-fit: contain;
+}
+
+.game-detail-artwork-placeholder {
+    display: grid;
+    min-height: 100%;
+    aspect-ratio: 2 / 3;
+    place-content: center;
+    color: var(--muted);
+    text-align: center;
+}
+
+.game-detail-artwork-placeholder strong {
+    color: var(--line);
+    font-size: clamp(4rem, 12vw, 9rem);
+    letter-spacing: -0.09em;
+}
+
+.game-detail-dialog-body {
+    min-width: 0;
+    padding: clamp(1.25rem, 3vw, 2.5rem);
+}
+
+.game-detail-description {
+    margin: 1rem 0 1.75rem;
+    color: var(--muted);
+    line-height: 1.65;
+}
+
+.game-detail-score-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.game-detail-score-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.game-detail-score-header span {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.axis-ratio-chart {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(4rem, 5.5rem));
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 15rem;
+    margin: 1rem 0 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 0.85rem;
+}
+
+.axis-ratio {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 0.5rem;
+    justify-items: center;
+}
+
+.axis-ratio > strong {
+    font-size: 0.85rem;
+}
+
+.axis-ratio-track {
+    position: relative;
+    width: clamp(1.2rem, 3vw, 2.1rem);
+    height: 100%;
+    min-height: 9rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.axis-ratio-fill {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    border-radius: inherit;
+}
+
+.axis-ratio-micro .axis-ratio-fill {
+    background: var(--micro);
+}
+
+.axis-ratio-meso .axis-ratio-fill {
+    background: var(--meso);
+}
+
+.axis-ratio-macro .axis-ratio-fill {
+    background: var(--macro);
+}
+
+.axis-ratio-label {
+    color: var(--muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+}
+
+.game-detail-voting {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1.5rem;
+}
+
+.game-detail-public-votes {
+    max-height: none;
+}
+
+.game-detail-vote-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.game-detail-vote-pagination span {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
 .vote-dialog {
     width: min(calc(100% - 2rem), 32rem);
     padding: 1.25rem;
@@ -847,6 +1064,12 @@ h2 {
     outline-offset: 4px;
 }
 
+@media (min-width: 800px) {
+    .game-list-panel-standalone .game-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 800px) {
     .site-nav {
         display: none;
@@ -882,6 +1105,22 @@ h2 {
 
     .game-detail {
         min-height: 32rem;
+    }
+
+    .game-detail-dialog-content {
+        grid-template-columns: 1fr;
+    }
+
+    .game-detail-artwork img {
+        width: auto;
+        max-width: 100%;
+        max-height: 55vh;
+        margin: 0 auto;
+    }
+
+    .game-detail-artwork-placeholder {
+        min-height: 55vh;
+        aspect-ratio: auto;
     }
 }
 
