@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS SteamGames
         CONSTRAINT PK_SteamGames PRIMARY KEY,
     SteamAppId   INTEGER NOT NULL,
     Name         TEXT    NULL,
+    Description  TEXT    NULL,
+    ReleaseYear  INTEGER NULL,
     IconUrl      TEXT    NULL,
     CreatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -88,7 +90,48 @@ CREATE TABLE IF NOT EXISTS SteamGames
     CONSTRAINT UQ_SteamGames_SteamAppId
         UNIQUE (SteamAppId),
     CONSTRAINT CK_SteamGames_SteamAppId_Positive
-        CHECK (SteamAppId > 0)
+        CHECK (SteamAppId > 0),
+    CONSTRAINT CK_SteamGames_ReleaseYear_Range
+        CHECK (ReleaseYear IS NULL OR ReleaseYear BETWEEN 1970 AND 2100)
+);
+
+CREATE TABLE IF NOT EXISTS GameAtlasIcons
+(
+    GameId           INTEGER NOT NULL
+        CONSTRAINT PK_GameAtlasIcons PRIMARY KEY,
+    ImageContentType TEXT    NOT NULL DEFAULT 'image/png',
+    ImageContent     BLOB    NOT NULL,
+    DiameterPixels   INTEGER NOT NULL,
+    LibraryCardContentType  TEXT NULL,
+    LibraryCardContent      BLOB NULL,
+    LibraryCardWidthPixels  INTEGER NULL,
+    LibraryCardHeightPixels INTEGER NULL,
+    CreatedAtUtc     TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT FK_GameAtlasIcons_Games_GameId
+        FOREIGN KEY (GameId)
+        REFERENCES Games (GameId)
+        ON DELETE CASCADE,
+    CONSTRAINT CK_GameAtlasIcons_ImageContentType_Png
+        CHECK (ImageContentType = 'image/png'),
+    CONSTRAINT CK_GameAtlasIcons_ImageContent_NotEmpty
+        CHECK (length(ImageContent) > 0),
+    CONSTRAINT CK_GameAtlasIcons_Diameter_Range
+        CHECK (DiameterPixels BETWEEN 1 AND 200),
+    CONSTRAINT CK_GameAtlasIcons_LibraryCard_AllOrNone
+        CHECK (
+            (LibraryCardContentType IS NULL
+                AND LibraryCardContent IS NULL
+                AND LibraryCardWidthPixels IS NULL
+                AND LibraryCardHeightPixels IS NULL)
+            OR
+            (LibraryCardContentType = 'image/jpeg'
+                AND length(LibraryCardContent) > 0
+                AND LibraryCardWidthPixels BETWEEN 1 AND 600
+                AND LibraryCardHeightPixels BETWEEN 1 AND 900
+                AND LibraryCardWidthPixels * 3
+                    = LibraryCardHeightPixels * 2)
+        )
 );
 
 CREATE TABLE IF NOT EXISTS SteamLibraryGames

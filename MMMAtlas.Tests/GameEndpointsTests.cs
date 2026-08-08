@@ -127,6 +127,7 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(1234, game.SteamAppId);
         Assert.AreEqual("Test Game", game.Name);
         Assert.AreEqual("Summary", game.Summary);
+        Assert.IsNull(game.ReleaseYear);
         Assert.AreEqual("/api/games/1/image", game.ImageUrl);
         Assert.AreEqual(2, game.VoteCount);
         Assert.AreEqual(0.375, game.MicroRatio!.Value, 0.000001);
@@ -167,8 +168,9 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(9010, game.SteamAppId);
         Assert.AreEqual("Real Table Game", game.Name);
         Assert.AreEqual(
-            "Community ratings for Real Table Game.",
+            "Store description",
             game.Summary);
+        Assert.AreEqual(2024, game.ReleaseYear);
         Assert.AreEqual(
             "https://example.test/icon.jpg",
             game.ImageUrl);
@@ -254,7 +256,7 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
-    public async Task SubmitVoteDefaultsToPrivate()
+    public async Task SubmitFirstVoteRequiresAtlasIcon()
     {
         await using var factory = new AtlasApplicationFactory();
         using var client = factory.CreateClient();
@@ -269,6 +271,26 @@ public sealed class GameEndpointsTests
                 ["macroScore"] = "5.0"
             }));
 
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        var votes = await client.GetFromJsonAsync<VoteResponse[]>(
+            "/api/games/2/votes");
+        Assert.IsNotNull(votes);
+        Assert.IsEmpty(votes);
+        Assert.AreEqual(
+            HttpStatusCode.NotFound,
+            (await client.GetAsync("/api/games/2/atlas-icon")).StatusCode);
+    }
+
+    [TestMethod]
+    public async Task SubmitVoteDefaultsToPrivate()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        using var content = CreateFirstVoteContent();
+        var response = await client.PostAsync("/api/me/votes/2", content);
+
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         var submitted =
             await response.Content.ReadFromJsonAsync<VoteSubmissionResponse>();
@@ -280,6 +302,23 @@ public sealed class GameEndpointsTests
         Assert.IsNotNull(votes);
         Assert.HasCount(1, votes);
         Assert.IsNull(votes[0].PublicProfileName);
+
+        var game = await client.GetFromJsonAsync<GameResponse>("/api/games/2");
+        Assert.IsNotNull(game);
+        Assert.AreEqual("/api/games/2/atlas-icon", game.ImageUrl);
+
+        var iconResponse = await client.GetAsync("/api/games/2/atlas-icon");
+        Assert.AreEqual(HttpStatusCode.OK, iconResponse.StatusCode);
+        Assert.AreEqual(
+            "image/png",
+            iconResponse.Content.Headers.ContentType?.MediaType);
+
+        var libraryCardResponse =
+            await client.GetAsync("/api/games/2/library-card");
+        Assert.AreEqual(HttpStatusCode.OK, libraryCardResponse.StatusCode);
+        Assert.AreEqual(
+            "image/jpeg",
+            libraryCardResponse.Content.Headers.ContentType?.MediaType);
     }
 
     [TestMethod]
@@ -329,11 +368,41 @@ public sealed class GameEndpointsTests
         int SteamAppId,
         string Name,
         string Summary,
+        int? ReleaseYear,
         string ImageUrl,
         int VoteCount,
         double? MicroRatio,
         double? MesoRatio,
         double? MacroRatio);
+
+    private static MultipartFormDataContent CreateFirstVoteContent()
+    {
+        var content = new MultipartFormDataContent
+        {
+            { new StringContent("5.0"), "microScore" },
+            { new StringContent("5.0"), "mesoScore" },
+            { new StringContent("5.0"), "macroScore" }
+        };
+        var png = new ByteArrayContent(Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
+        png.Headers.ContentType = new("image/png");
+        content.Add(png, "atlasIcon", "atlas-icon.png");
+        var jpeg = new ByteArrayContent(
+        [
+            0xff, 0xd8,
+            0xff, 0xc0, 0x00, 0x11, 0x08,
+            0x03, 0x84,
+            0x02, 0x58,
+            0x03,
+            0x01, 0x11, 0x00,
+            0x02, 0x11, 0x00,
+            0x03, 0x11, 0x00,
+            0xff, 0xd9
+        ]);
+        jpeg.Headers.ContentType = new("image/jpeg");
+        content.Add(jpeg, "libraryCard", "library-card.jpg");
+        return content;
+    }
 
     private sealed class AtlasApplicationFactory :
         WebApplicationFactory<Program>
@@ -430,7 +499,22 @@ public sealed class GameEndpointsTests
                     GameId INTEGER PRIMARY KEY,
                     SteamAppId INTEGER NOT NULL,
                     Name TEXT NULL,
+                    Description TEXT NULL,
+                    ReleaseYear INTEGER NULL,
                     IconUrl TEXT NULL
+                );
+
+                CREATE TABLE GameAtlasIcons
+                (
+                    GameId INTEGER PRIMARY KEY,
+                    ImageContentType TEXT NOT NULL,
+                    ImageContent BLOB NOT NULL,
+                    DiameterPixels INTEGER NOT NULL,
+                    LibraryCardContentType TEXT NULL,
+                    LibraryCardContent BLOB NULL,
+                    LibraryCardWidthPixels INTEGER NULL,
+                    LibraryCardHeightPixels INTEGER NULL,
+                    CreatedAtUtc TEXT NOT NULL
                 );
 
                 CREATE TABLE GameVoteAggregates
@@ -449,12 +533,14 @@ public sealed class GameEndpointsTests
                     (2, 'Game Without Votes', 'Summary', 'image/png', X'00');
 
                 INSERT INTO SteamGames VALUES
-                    (1, 1234, NULL, NULL),
-                    (2, 5678, NULL, NULL),
+                    (1, 1234, NULL, NULL, NULL, NULL),
+                    (2, 5678, NULL, NULL, NULL, NULL),
                     (
                         3,
                         9010,
                         'Real Table Game',
+                        'Store description',
+                        2024,
                         'https://example.test/icon.jpg'
                     );
 

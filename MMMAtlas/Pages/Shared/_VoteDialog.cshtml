@@ -61,6 +61,49 @@
     </form>
 </dialog>
 
+<dialog
+    class="vote-dialog atlas-crop-dialog"
+    data-atlas-crop-dialog
+    aria-labelledby="atlas-crop-dialog-title">
+    <div class="vote-dialog-header">
+        <h2 id="atlas-crop-dialog-title">Choose the atlas icon</h2>
+        <button type="button" data-crop-close aria-label="Close crop window">Close</button>
+    </div>
+
+    <p>
+        Drag the library card to frame a circular icon. The saved crop is limited
+        to 200 pixels in diameter.
+    </p>
+
+    <div class="atlas-crop-stage" data-crop-stage aria-busy="true">
+        <canvas
+            data-crop-canvas
+            width="300"
+            height="300"
+            tabindex="0"
+            aria-label="Circular game icon crop preview"></canvas>
+        <p data-crop-loading>Loading Steam library card&hellip;</p>
+    </div>
+
+    <label class="atlas-crop-zoom">
+        <span>Zoom</span>
+        <input
+            type="range"
+            min="1"
+            max="3"
+            step="0.01"
+            value="1"
+            data-crop-zoom />
+    </label>
+
+    <p class="vote-error" data-crop-error role="alert" hidden></p>
+
+    <div class="vote-dialog-actions">
+        <button type="button" data-crop-cancel>Back</button>
+        <button type="button" data-crop-save disabled>Save icon and vote</button>
+    </div>
+</dialog>
+
 <div
     class="vote-toast-region"
     data-vote-toast-region

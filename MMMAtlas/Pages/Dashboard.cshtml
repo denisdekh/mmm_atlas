@@ -133,8 +133,11 @@
                                 type="button"
                                 data-vote-trigger
                                 data-game-id="@game.GameId"
+                                data-steam-app-id="@game.SteamAppId"
                                 data-game-title="@game.Name"
                                 data-game-icon="@game.IconUrl"
+                                data-library-card-url="/api/games/@game.GameId/library-card"
+                                data-needs-atlas-icon="@game.NeedsAtlasIcon.ToString().ToLowerInvariant()"
                                 data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
                                 data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
                                 data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"

@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Data.Sqlite;
 using MMMAtlas.Data;
 
@@ -28,32 +27,102 @@ public sealed class VotingManager(DatabaseConnection database)
         long userId,
         long gameId,
         VoteScores scores,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        AtlasIcon? atlasIcon = null)
     {
         await using var connection = new SqliteConnection(database.Value);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqliteTransaction)
             await connection.BeginTransactionAsync(cancellationToken);
 
+        bool isFirstVote;
         await using (var gameCommand = connection.CreateCommand())
         {
             gameCommand.Transaction = transaction;
             gameCommand.CommandText = """
-                SELECT EXISTS
-                (
-                    SELECT 1
-                    FROM SteamGames
-                    WHERE GameId = $gameId
-                );
+                SELECT
+                    EXISTS
+                    (
+                        SELECT 1
+                        FROM SteamGames
+                        WHERE GameId = $gameId
+                    ),
+                    NOT EXISTS
+                    (
+                        SELECT 1
+                        FROM GameVoteAggregates
+                        WHERE GameId = $gameId
+                    );
                 """;
             gameCommand.Parameters.AddWithValue("$gameId", gameId);
 
-            var gameExists = Convert.ToInt64(
-                await gameCommand.ExecuteScalarAsync(cancellationToken)) == 1;
-            if (!gameExists)
+            await using var reader =
+                await gameCommand.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken)
+                || !reader.GetBoolean(0))
             {
                 return null;
             }
+
+            isFirstVote = reader.GetBoolean(1);
+        }
+
+        if (isFirstVote && atlasIcon is null)
+        {
+            throw new AtlasIconRequiredException();
+        }
+
+        if (isFirstVote)
+        {
+            await using var iconCommand = connection.CreateCommand();
+            iconCommand.Transaction = transaction;
+            iconCommand.CommandText = """
+                INSERT INTO GameAtlasIcons
+                (
+                    GameId,
+                    ImageContentType,
+                    ImageContent,
+                    DiameterPixels,
+                    LibraryCardContentType,
+                    LibraryCardContent,
+                    LibraryCardWidthPixels,
+                    LibraryCardHeightPixels,
+                    CreatedAtUtc
+                )
+                VALUES
+                (
+                    $gameId,
+                    'image/png',
+                    $imageContent,
+                    $diameterPixels,
+                    $libraryCardContentType,
+                    $libraryCardContent,
+                    $libraryCardWidthPixels,
+                    $libraryCardHeightPixels,
+                    CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (GameId) DO NOTHING;
+                """;
+            iconCommand.Parameters.AddWithValue("$gameId", gameId);
+            iconCommand.Parameters.AddWithValue(
+                "$imageContent",
+                atlasIcon!.ImageContent);
+            iconCommand.Parameters.AddWithValue(
+                "$diameterPixels",
+                atlasIcon.DiameterPixels);
+            iconCommand.Parameters.AddWithValue(
+                "$libraryCardContentType",
+                atlasIcon.LibraryCard.ContentType);
+            iconCommand.Parameters.AddWithValue(
+                "$libraryCardContent",
+                atlasIcon.LibraryCard.ImageContent);
+            iconCommand.Parameters.AddWithValue(
+                "$libraryCardWidthPixels",
+                atlasIcon.LibraryCard.WidthPixels);
+            iconCommand.Parameters.AddWithValue(
+                "$libraryCardHeightPixels",
+                atlasIcon.LibraryCard.HeightPixels);
+            await iconCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
         bool amended;
@@ -253,3 +322,108 @@ public sealed record VoteScores(
 public sealed record VoteSubmissionResult(
     VoteScores Scores,
     bool Amended);
+
+public sealed class AtlasIcon
+{
+    public const int MaximumDiameterPixels = 200;
+    public const int MaximumContentLength = 256 * 1024;
+
+    public AtlasIcon(
+        byte[] imageContent,
+        int diameterPixels,
+        LibraryCard libraryCard)
+    {
+        ArgumentNullException.ThrowIfNull(imageContent);
+
+        if (imageContent.Length is 0 or > MaximumContentLength)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(imageContent),
+                $"Atlas icons must be between 1 and {MaximumContentLength} bytes.");
+        }
+
+        if (diameterPixels is < 1 or > MaximumDiameterPixels)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(diameterPixels),
+                $"Atlas icon diameter cannot exceed {MaximumDiameterPixels} pixels.");
+        }
+
+        ArgumentNullException.ThrowIfNull(libraryCard);
+
+        ImageContent = imageContent;
+        DiameterPixels = diameterPixels;
+        LibraryCard = libraryCard;
+    }
+
+    public byte[] ImageContent { get; }
+
+    public int DiameterPixels { get; }
+
+    public LibraryCard LibraryCard { get; }
+}
+
+public sealed class LibraryCard
+{
+    public const int MaximumContentLength = 5 * 1024 * 1024;
+    public const int MaximumWidthPixels = 600;
+    public const int MaximumHeightPixels = 900;
+
+    public LibraryCard(
+        byte[] imageContent,
+        string contentType,
+        int widthPixels,
+        int heightPixels)
+    {
+        ArgumentNullException.ThrowIfNull(imageContent);
+
+        if (imageContent.Length is 0 or > MaximumContentLength)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(imageContent),
+                $"Library cards must be between 1 and {MaximumContentLength} bytes.");
+        }
+
+        if (!string.Equals(
+            contentType,
+            "image/jpeg",
+            StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "Library cards must use the image/jpeg content type.",
+                nameof(contentType));
+        }
+
+        if (widthPixels < 1
+            || heightPixels < 1
+            || widthPixels > MaximumWidthPixels
+            || heightPixels > MaximumHeightPixels
+            || (long)widthPixels * 3 != (long)heightPixels * 2)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(widthPixels),
+                "Library cards must use a 2:3 aspect ratio and be no larger than 600 by 900 pixels.");
+        }
+
+        ImageContent = imageContent;
+        ContentType = "image/jpeg";
+        WidthPixels = widthPixels;
+        HeightPixels = heightPixels;
+    }
+
+    public byte[] ImageContent { get; }
+
+    public string ContentType { get; }
+
+    public int WidthPixels { get; }
+
+    public int HeightPixels { get; }
+}
+
+public sealed class AtlasIconRequiredException : InvalidOperationException
+{
+    public AtlasIconRequiredException()
+        : base("The first vote for a game must include an atlas icon.")
+    {
+    }
+}

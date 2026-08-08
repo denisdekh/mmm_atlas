@@ -422,7 +422,7 @@
         <header>
             <div>
                 <h1>MMM Atlas SQLite schema</h1>
-                <p class="subtitle">Eight tables, eight displayed foreign-key relationships, and two explicit secondary indexes.</p>
+                <p class="subtitle">Nine tables, nine displayed foreign-key relationships, and two explicit secondary indexes.</p>
             </div>
             <div class="source">Source: <code>SQLiteTableSchemas.sql</code></div>
         </header>
@@ -550,6 +550,8 @@
                             <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
                             <tr><td class="field-name">SteamAppId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-uq">UQ</span></span></td><td class="default">NOT NULL</td></tr>
                             <tr><td class="field-name">Name</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">Description</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">ReleaseYear</td><td class="type">INTEGER</td><td></td><td class="default">NULL · 1970–2100</td></tr>
                             <tr><td class="field-name">IconUrl</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
                             <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
                             <tr><td class="field-name">UpdatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
@@ -558,6 +560,28 @@
                     <div class="card-footer">
                         <div><strong>Indexes:</strong> <code>PK_SteamGames (GameId)</code>; <code>UQ_SteamGames_SteamAppId (SteamAppId)</code></div>
                         <div><strong>FK:</strong> <code>GameId → Games.GameId ON DELETE RESTRICT</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-game-atlas-icons" data-table="GameAtlasIcons">
+                    <h2><span>GameAtlasIcons</span><span class="table-kind">atlas media</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">ImageContentType</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · 'image/png'</td></tr>
+                            <tr><td class="field-name">ImageContent</td><td class="type">BLOB</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">DiameterPixels</td><td class="type">INTEGER</td><td></td><td class="default">NOT NULL · 1–200</td></tr>
+                            <tr><td class="field-name">LibraryCardContentType</td><td class="type">TEXT</td><td></td><td class="default">NULL · 'image/jpeg'</td></tr>
+                            <tr><td class="field-name">LibraryCardContent</td><td class="type">BLOB</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">LibraryCardWidthPixels</td><td class="type">INTEGER</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">LibraryCardHeightPixels</td><td class="type">INTEGER</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_GameAtlasIcons (GameId)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → Games.GameId ON DELETE CASCADE</code></div>
                     </div>
                 </article>
 
@@ -608,12 +632,14 @@
                 <li>SteamGames.GameId references Games.GameId.</li>
                 <li>Votes.UserId references Users.UserId.</li>
                 <li>Votes.GameId references Games.GameId.</li>
+                <li>GameAtlasIcons.GameId references Games.GameId.</li>
                 <li>GameVoteAggregates.GameId references Games.GameId.</li>
                 <li>DevelopmentGameInfo.GameId references Games.GameId.</li>
             </ol>
         </section>
 
         <section class="notes" aria-label="Schema notes">
+            <div class="note"><strong>GameAtlasIcons</strong> stores the first voter's circular PNG crop and the source Steam library-card JPEG by internal <code>GameId</code>.</div>
             <div class="note"><strong>GameVoteAggregates</strong> is a rebuildable projection of normalized values from <code>Votes</code>.</div>
             <div class="note"><strong>DevelopmentGameInfo</strong> is temporary blob-backed UI data; production metadata lives through the Steam link.</div>
         </section>
@@ -632,6 +658,7 @@
                 ["table-steam-games", "table-games"],
                 ["table-votes", "table-users"],
                 ["table-votes", "table-games"],
+                ["table-game-atlas-icons", "table-games"],
                 ["table-game-vote-aggregates", "table-games"],
                 ["table-development-game-info", "table-games"]
             ];

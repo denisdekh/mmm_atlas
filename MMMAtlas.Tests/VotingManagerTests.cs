@@ -52,7 +52,8 @@ public sealed class VotingManagerTests
             1,
             1,
             new VoteScores(8, 6, 2),
-            CancellationToken.None);
+            CancellationToken.None,
+            new AtlasIcon([1], 200, CreateLibraryCard()));
 
         Assert.IsNotNull(created);
         Assert.IsFalse(created.Amended);
@@ -120,12 +121,14 @@ public sealed class VotingManagerTests
                 1,
                 1,
                 new VoteScores(8, 6, 2),
-                CancellationToken.None),
+                CancellationToken.None,
+                new AtlasIcon([1], 200, CreateLibraryCard())),
             manager.SubmitAsync(
                 2,
                 1,
                 new VoteScores(1, 1, 8),
-                CancellationToken.None));
+                CancellationToken.None,
+                new AtlasIcon([2], 200, CreateLibraryCard())));
 
         var aggregate = ReadAggregate();
         Assert.AreEqual(2, aggregate.VoteCount);
@@ -134,6 +137,65 @@ public sealed class VotingManagerTests
         Assert.AreEqual(0.4625, aggregate.MacroRatio, 0.000001);
         Assert.AreEqual(2L, CountVotes());
     }
+
+    [TestMethod]
+    public async Task FirstVoteRequiresAndStoresOneAtlasIcon()
+    {
+        var manager = CreateManager();
+
+        await Assert.ThrowsAsync<AtlasIconRequiredException>(() =>
+            manager.SubmitAsync(
+                1,
+                1,
+                new VoteScores(5, 5, 5),
+                CancellationToken.None));
+        Assert.AreEqual(0L, CountVotes());
+
+        await manager.SubmitAsync(
+            1,
+            1,
+            new VoteScores(5, 5, 5),
+            CancellationToken.None,
+            new AtlasIcon([10, 20, 30], 200, CreateLibraryCard()));
+        await manager.SubmitAsync(
+            2,
+            1,
+            new VoteScores(4, 5, 6),
+            CancellationToken.None,
+            new AtlasIcon([99], 100, CreateLibraryCard()));
+
+        using var connection =
+            new SqliteConnection($"Data Source={_databasePath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT
+                ImageContent,
+                DiameterPixels,
+                LibraryCardContentType,
+                LibraryCardContent,
+                LibraryCardWidthPixels,
+                LibraryCardHeightPixels
+            FROM GameAtlasIcons
+            WHERE GameId = 1;
+            """;
+        using var reader = command.ExecuteReader();
+        Assert.IsTrue(reader.Read());
+        CollectionAssert.AreEqual(
+            new byte[] { 10, 20, 30 },
+            (byte[])reader.GetValue(0));
+        Assert.AreEqual(200, reader.GetInt32(1));
+        Assert.AreEqual("image/jpeg", reader.GetString(2));
+        CollectionAssert.AreEqual(
+            new byte[] { 40, 50, 60 },
+            (byte[])reader.GetValue(3));
+        Assert.AreEqual(600, reader.GetInt32(4));
+        Assert.AreEqual(900, reader.GetInt32(5));
+        Assert.IsFalse(reader.Read());
+    }
+
+    private static LibraryCard CreateLibraryCard() =>
+        new([40, 50, 60], "image/jpeg", 600, 900);
 
     private VotingManager CreateManager() =>
         new(DatabaseConnection.Create(

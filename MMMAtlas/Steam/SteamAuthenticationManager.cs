@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 using MMMAtlas.Data;
 
@@ -5,7 +6,8 @@ namespace MMMAtlas.Steam;
 
 public sealed class SteamAuthenticationManager(
     DatabaseConnection database,
-    SteamApiClient steamApiClient)
+    SteamApiClient steamApiClient,
+    ISteamStoreClient steamStoreClient)
 {
     public async Task<SteamSignInResult> CompleteSignInAsync(
         long steamId,
@@ -53,10 +55,15 @@ public sealed class SteamAuthenticationManager(
             cancellationToken);
 
         await Task.WhenAll(profileTask, libraryTask);
+        var library = await libraryTask;
+        var newGameMetadata = await FetchNewGameMetadataAsync(
+            library,
+            cancellationToken);
         await SaveFetchedDataAsync(
             userId,
             await profileTask,
-            await libraryTask,
+            library,
+            newGameMetadata,
             cancellationToken);
     }
 
@@ -183,7 +190,8 @@ public sealed class SteamAuthenticationManager(
                 vote.MicroScore,
                 vote.MesoScore,
                 vote.MacroScore,
-                COALESCE(vote.IsPublic, 0)
+                COALESCE(vote.IsPublic, 0),
+                CASE WHEN aggregate.GameId IS NULL THEN 1 ELSE 0 END
             FROM SteamLibraryGames AS library
             INNER JOIN SteamGames AS steam
                 ON steam.GameId = library.GameId
@@ -192,6 +200,8 @@ public sealed class SteamAuthenticationManager(
             LEFT JOIN Votes AS vote
                 ON vote.UserId = library.UserId
                 AND vote.GameId = library.GameId
+            LEFT JOIN GameVoteAggregates AS aggregate
+                ON aggregate.GameId = library.GameId
             WHERE library.UserId = $userId
             ORDER BY library.PlaytimeForeverMinutes DESC, steam.SteamAppId
             LIMIT 20;
@@ -214,7 +224,8 @@ public sealed class SteamAuthenticationManager(
                 gamesReader.IsDBNull(7) ? null : gamesReader.GetDouble(7),
                 gamesReader.IsDBNull(8) ? null : gamesReader.GetDouble(8),
                 gamesReader.IsDBNull(9) ? null : gamesReader.GetDouble(9),
-                gamesReader.GetBoolean(10)));
+                gamesReader.GetBoolean(10),
+                gamesReader.GetBoolean(11)));
         }
 
         return dashboard with { MostPlayedGames = games };
@@ -330,6 +341,7 @@ public sealed class SteamAuthenticationManager(
         long userId,
         SteamProfile? profile,
         SteamLibraryResult library,
+        IReadOnlyDictionary<int, SteamStoreGame> newGameMetadata,
         CancellationToken cancellationToken)
     {
         await using var connection = new SqliteConnection(database.Value);
@@ -370,6 +382,7 @@ public sealed class SteamAuthenticationManager(
                     connection,
                     userId,
                     library.Games,
+                    newGameMetadata,
                     cancellationToken);
                 break;
 
@@ -393,10 +406,64 @@ public sealed class SteamAuthenticationManager(
         await transaction.CommitAsync(cancellationToken);
     }
 
+    private async Task<IReadOnlyDictionary<int, SteamStoreGame>>
+        FetchNewGameMetadataAsync(
+            SteamLibraryResult library,
+            CancellationToken cancellationToken)
+    {
+        if (library.Availability != SteamLibraryAvailability.Available
+            || library.Games.Count == 0)
+        {
+            return new Dictionary<int, SteamStoreGame>();
+        }
+
+        var existingAppIds = new HashSet<int>();
+        await using (var connection = new SqliteConnection(database.Value))
+        {
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT SteamAppId FROM SteamGames;";
+            await using var reader =
+                await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                existingAppIds.Add(reader.GetInt32(0));
+            }
+        }
+
+        var newAppIds = library.Games
+            .Select(game => game.AppId)
+            .Where(appId => !existingAppIds.Contains(appId))
+            .Distinct()
+            .ToArray();
+        var results = new ConcurrentDictionary<int, SteamStoreGame>();
+
+        await Parallel.ForEachAsync(
+            newAppIds,
+            new ParallelOptions
+            {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = 4
+            },
+            async (appId, token) =>
+            {
+                var metadata = await steamStoreClient.GetGameAsync(
+                    appId,
+                    token);
+                if (metadata is not null)
+                {
+                    results[appId] = metadata;
+                }
+            });
+
+        return results;
+    }
+
     private static async Task SaveAvailableLibraryAsync(
         SqliteConnection connection,
         long userId,
         IReadOnlyList<SteamOwnedGame> games,
+        IReadOnlyDictionary<int, SteamStoreGame> newGameMetadata,
         CancellationToken cancellationToken)
     {
         var verifiedAtUtc = DateTimeOffset.UtcNow.ToString("O");
@@ -406,6 +473,7 @@ public sealed class SteamAuthenticationManager(
             var gameId = await GetOrCreateGameAsync(
                 connection,
                 game,
+                newGameMetadata.GetValueOrDefault(game.AppId),
                 cancellationToken);
 
             await using var libraryCommand = connection.CreateCommand();
@@ -480,6 +548,7 @@ public sealed class SteamAuthenticationManager(
     private static async Task<long> GetOrCreateGameAsync(
         SqliteConnection connection,
         SteamOwnedGame game,
+        SteamStoreGame? storeGame,
         CancellationToken cancellationToken)
     {
         await using var findCommand = connection.CreateCommand();
@@ -498,6 +567,8 @@ public sealed class SteamAuthenticationManager(
             updateCommand.CommandText = """
                 UPDATE SteamGames
                 SET Name = COALESCE($name, Name),
+                    Description = COALESCE(Description, $description),
+                    ReleaseYear = COALESCE(ReleaseYear, $releaseYear),
                     IconUrl = COALESCE($iconUrl, IconUrl),
                     UpdatedAtUtc = CURRENT_TIMESTAMP
                 WHERE GameId = $gameId;
@@ -508,6 +579,12 @@ public sealed class SteamAuthenticationManager(
             updateCommand.Parameters.AddWithValue(
                 "$name",
                 (object?)game.Name ?? DBNull.Value);
+            updateCommand.Parameters.AddWithValue(
+                "$description",
+                (object?)storeGame?.Description ?? DBNull.Value);
+            updateCommand.Parameters.AddWithValue(
+                "$releaseYear",
+                (object?)storeGame?.ReleaseYear ?? DBNull.Value);
             updateCommand.Parameters.AddWithValue(
                 "$iconUrl",
                 (object?)game.IconUrl ?? DBNull.Value);
@@ -526,14 +603,22 @@ public sealed class SteamAuthenticationManager(
 
         await using var createSteamGameCommand = connection.CreateCommand();
         createSteamGameCommand.CommandText = """
-            INSERT INTO SteamGames (GameId, SteamAppId, Name, IconUrl)
-            VALUES ($gameId, $steamAppId, $name, $iconUrl);
+            INSERT INTO SteamGames
+                (GameId, SteamAppId, Name, Description, ReleaseYear, IconUrl)
+            VALUES
+                ($gameId, $steamAppId, $name, $description, $releaseYear, $iconUrl);
             """;
         createSteamGameCommand.Parameters.AddWithValue("$gameId", gameId);
         createSteamGameCommand.Parameters.AddWithValue("$steamAppId", game.AppId);
         createSteamGameCommand.Parameters.AddWithValue(
             "$name",
             (object?)game.Name ?? DBNull.Value);
+        createSteamGameCommand.Parameters.AddWithValue(
+            "$description",
+            (object?)storeGame?.Description ?? DBNull.Value);
+        createSteamGameCommand.Parameters.AddWithValue(
+            "$releaseYear",
+            (object?)storeGame?.ReleaseYear ?? DBNull.Value);
         createSteamGameCommand.Parameters.AddWithValue(
             "$iconUrl",
             (object?)game.IconUrl ?? DBNull.Value);
@@ -626,4 +711,5 @@ public sealed record SteamDashboardGame(
     double? MicroScore,
     double? MesoScore,
     double? MacroScore,
-    bool IsPublic);
+    bool IsPublic,
+    bool NeedsAtlasIcon);

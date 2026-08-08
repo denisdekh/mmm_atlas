@@ -10,6 +10,7 @@ namespace MMMAtlas.Tests;
 public sealed class SteamAuthenticationManagerTests
 {
     private string _databasePath = null!;
+    private TestSteamStoreClient _storeClient = null!;
 
     [TestInitialize]
     public void Initialize()
@@ -61,6 +62,10 @@ public sealed class SteamAuthenticationManagerTests
         Assert.AreEqual(
             9000,
             dashboard.MostPlayedGames[0].PlaytimeForeverMinutes);
+        Assert.AreEqual(2, _storeClient.RequestCount);
+        Assert.AreEqual(
+            ("Long Game description", 2011),
+            ReadStoreMetadata(10));
 
         AddVote(firstSignIn.UserId);
 
@@ -111,6 +116,7 @@ public sealed class SteamAuthenticationManagerTests
         Assert.IsTrue(optedBackIn.DataCollectionEnabled);
         Assert.AreEqual("Atlas Tester", optedBackIn.PersonaName);
         Assert.HasCount(2, optedBackIn.MostPlayedGames);
+        Assert.AreEqual(2, _storeClient.RequestCount);
 
         using var connection =
             new SqliteConnection($"Data Source={_databasePath}");
@@ -153,6 +159,26 @@ public sealed class SteamAuthenticationManagerTests
         return (long)command.ExecuteScalar()!;
     }
 
+    private (string? Description, int? ReleaseYear) ReadStoreMetadata(
+        int appId)
+    {
+        using var connection =
+            new SqliteConnection($"Data Source={_databasePath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Description, ReleaseYear
+            FROM SteamGames
+            WHERE SteamAppId = $appId;
+            """;
+        command.Parameters.AddWithValue("$appId", appId);
+        using var reader = command.ExecuteReader();
+        Assert.IsTrue(reader.Read());
+        return (
+            reader.IsDBNull(0) ? null : reader.GetString(0),
+            reader.IsDBNull(1) ? null : reader.GetInt32(1));
+    }
+
     private SteamAuthenticationManager CreateManager()
     {
         var handler = new SteamApiMessageHandler();
@@ -168,7 +194,29 @@ public sealed class SteamAuthenticationManagerTests
             $"Data Source={_databasePath};Foreign Keys=True",
             Directory.GetCurrentDirectory());
 
-        return new SteamAuthenticationManager(database, apiClient);
+        _storeClient = new TestSteamStoreClient();
+        return new SteamAuthenticationManager(
+            database,
+            apiClient,
+            _storeClient);
+    }
+
+    private sealed class TestSteamStoreClient : ISteamStoreClient
+    {
+        private int _requestCount;
+
+        public int RequestCount => _requestCount;
+
+        public Task<SteamStoreGame?> GetGameAsync(
+            int appId,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _requestCount);
+            var name = appId == 10 ? "Long Game" : "Short Game";
+            var year = appId == 10 ? 2011 : 2020;
+            return Task.FromResult<SteamStoreGame?>(
+                new SteamStoreGame($"{name} description", year));
+        }
     }
 
     private sealed class SteamApiMessageHandler : HttpMessageHandler

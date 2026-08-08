@@ -137,8 +137,44 @@ public static class DevelopmentDatabase
         await EnsureColumnAsync(
             connection,
             "SteamGames",
+            "Description",
+            "TEXT NULL",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "SteamGames",
+            "ReleaseYear",
+            "INTEGER NULL CHECK (ReleaseYear IS NULL OR ReleaseYear BETWEEN 1970 AND 2100)",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "SteamGames",
             "IconUrl",
             "TEXT NULL",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "GameAtlasIcons",
+            "LibraryCardContentType",
+            "TEXT NULL",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "GameAtlasIcons",
+            "LibraryCardContent",
+            "BLOB NULL",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "GameAtlasIcons",
+            "LibraryCardWidthPixels",
+            "INTEGER NULL",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "GameAtlasIcons",
+            "LibraryCardHeightPixels",
+            "INTEGER NULL",
             cancellationToken);
         await EnsureColumnAsync(
             connection,

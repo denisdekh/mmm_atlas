@@ -26,6 +26,18 @@ builder.Services.AddHttpClient<SteamApiClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(15);
 })
 .RemoveAllLoggers();
+builder.Services.AddHttpClient<ISteamStoreClient, SteamStoreClient>(client =>
+{
+    client.BaseAddress = new Uri("https://store.steampowered.com/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+})
+.RemoveAllLoggers();
+builder.Services.AddHttpClient("SteamLibraryImages", client =>
+{
+    client.BaseAddress = new Uri("https://cdn.cloudflare.steamstatic.com/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+})
+.RemoveAllLoggers();
 builder.Services.AddScoped<SteamAuthenticationManager>();
 builder.Services.AddScoped<VotingManager>();
 
