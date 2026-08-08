@@ -203,6 +203,33 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
+    public async Task GetAtlasGamesReturnsLeanRenderableProjection()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/games/atlas");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var responseJson = await response.Content.ReadAsStringAsync();
+        var games = JsonSerializer.Deserialize<AtlasGameResponse[]>(
+            responseJson,
+            JsonSerializerOptions.Web);
+        Assert.IsNotNull(games);
+        Assert.HasCount(2, games);
+        Assert.DoesNotContain("summary", responseJson);
+        Assert.DoesNotContain("steamAppId", responseJson);
+
+        var game = games.Single(candidate => candidate.GameId == 3);
+        Assert.AreEqual("Real Table Game", game.Name);
+        Assert.AreEqual("https://example.test/icon.jpg", game.ImageUrl);
+        Assert.AreEqual(1, game.VoteCount);
+        Assert.AreEqual(0.2, game.MicroRatio, 0.000001);
+        Assert.AreEqual(0.3, game.MesoRatio, 0.000001);
+        Assert.AreEqual(0.5, game.MacroRatio, 0.000001);
+    }
+
+    [TestMethod]
     public async Task EraseSteamDataRequiresAuthentication()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -439,6 +466,15 @@ public sealed class GameEndpointsTests
         double? MicroRatio,
         double? MesoRatio,
         double? MacroRatio);
+
+    private sealed record AtlasGameResponse(
+        long GameId,
+        string Name,
+        string? ImageUrl,
+        int VoteCount,
+        double MicroRatio,
+        double MesoRatio,
+        double MacroRatio);
 
     private static MultipartFormDataContent CreateFirstVoteContent()
     {

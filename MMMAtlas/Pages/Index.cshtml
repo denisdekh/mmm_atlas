@@ -61,29 +61,98 @@
 <section class="game-api-demo" id="games" data-game-api>
     <div class="section-heading game-api-heading">
         <div>
-            <p class="eyebrow">Community votes</p>
-            <h2>Games rated by the community.</h2>
+            <p class="eyebrow">The living atlas</p>
+            <h2>Explore how games play.</h2>
         </div>
         <p class="game-api-intro">
-            Select a game to see its library card, release details, axis ratios,
-            and public votes.
+            Every point is anchored to its community Micro, Meso, and Macro
+            ratios. Zoom in to reveal game icons and their local neighborhoods.
         </p>
     </div>
 
-    <p class="game-api-status" data-game-status role="status">
-        Loading games from <code>/api/games</code>&hellip;
-    </p>
+    <div class="atlas-toolbar" aria-label="Atlas filters and view controls">
+        <div class="atlas-filters">
+            <label>
+                <span>Find a game</span>
+                <input
+                    type="search"
+                    placeholder="Search rated games"
+                    autocomplete="off"
+                    data-atlas-search />
+            </label>
+            <label>
+                <span>Strategic shape</span>
+                <select data-atlas-category>
+                    <option value="all">All distributions</option>
+                    <option value="micro">Micro leaning</option>
+                    <option value="meso">Meso leaning</option>
+                    <option value="macro">Macro leaning</option>
+                    <option value="mixed">Mixed or balanced</option>
+                </select>
+            </label>
+        </div>
 
-    <div class="game-list-panel game-list-panel-standalone">
-            <div class="game-list-heading">
-                <strong>Voted games</strong>
-                <span data-game-count>Waiting for API</span>
-            </div>
-            <div class="game-list" data-game-list aria-live="polite"></div>
+        <div class="atlas-view-controls" aria-label="Atlas view">
+            <button type="button" data-atlas-zoom-out aria-label="Zoom out">−</button>
+            <button type="button" data-atlas-zoom-in aria-label="Zoom in">+</button>
+            <button type="button" data-atlas-fit>Fit results</button>
+            <button type="button" data-atlas-reset>Reset</button>
+            <button type="button" data-atlas-refresh>Refresh</button>
+        </div>
     </div>
 
+    <div class="atlas-status-row">
+        <p class="game-api-status" data-game-status role="status" data-state="loading">
+            Loading the community atlas&hellip;
+        </p>
+        <span data-game-count>Waiting for API</span>
+    </div>
+
+    <p class="visually-hidden" id="atlas-description">
+        An interactive ternary map. Games near the top emphasize Micro, games
+        toward the lower left emphasize Meso, and games toward the lower right
+        emphasize Macro. Use arrow keys to move between visible games, Enter to
+        open one, plus and minus to zoom, and Home to reset the view.
+    </p>
+
+    <div class="atlas-stage" data-atlas-stage>
+        <canvas
+            data-atlas-canvas
+            tabindex="0"
+            role="img"
+            aria-label="Interactive map of community-rated games"
+            aria-describedby="atlas-description">
+            The game atlas requires Canvas support. Use the accessible game list
+            following the diagram instead.
+        </canvas>
+
+        <div class="atlas-tooltip" data-atlas-tooltip role="status" hidden>
+            <strong data-atlas-tooltip-title></strong>
+            <span data-atlas-tooltip-meta></span>
+            <span data-atlas-tooltip-ratios></span>
+        </div>
+
+        <div class="atlas-stage-help" aria-hidden="true">
+            <span>Drag to pan</span>
+            <span>Scroll or pinch to zoom</span>
+            <span>Points reveal icons as you move closer</span>
+        </div>
+    </div>
+
+    <div class="atlas-legend" aria-label="Atlas color legend">
+        <span><i class="atlas-swatch atlas-swatch-micro"></i>Micro</span>
+        <span><i class="atlas-swatch atlas-swatch-meso"></i>Meso</span>
+        <span><i class="atlas-swatch atlas-swatch-macro"></i>Macro</span>
+        <span><i class="atlas-swatch atlas-swatch-mixed"></i>Mixed</span>
+    </div>
+
+    <details class="atlas-results">
+        <summary>Browse the filtered games as a list</summary>
+        <ul class="atlas-result-list" data-game-list></ul>
+    </details>
+
     <noscript>
-        <p class="game-api-error">JavaScript is required to exercise the API from this page.</p>
+        <p class="game-api-error">JavaScript is required to render the interactive atlas.</p>
     </noscript>
 </section>
 

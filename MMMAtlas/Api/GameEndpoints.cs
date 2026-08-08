@@ -12,6 +12,7 @@ public static class GameEndpoints
             .WithTags("Games");
 
         games.MapGet("", GetGamesAsync);
+        games.MapGet("/atlas", GetAtlasGamesAsync);
         games.MapGet("/{gameId:long}", GetGameAsync);
         games.MapGet("/{gameId:long}/image", GetGameImageAsync)
             .WithName("GetGameImage");
@@ -84,6 +85,70 @@ public static class GameEndpoints
         while (await reader.ReadAsync(cancellationToken))
         {
             results.Add(ReadGame(reader, httpContext.Request));
+        }
+
+        return Results.Ok(results);
+    }
+
+    private static async Task<IResult> GetAtlasGamesAsync(
+        HttpContext httpContext,
+        DatabaseConnection database,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT
+                steam.GameId,
+                COALESCE(
+                    steam.Name,
+                    info.Name,
+                    'Steam app ' || steam.SteamAppId
+                ),
+                steam.IconUrl,
+                CASE WHEN atlas.ImageContent IS NULL THEN 0 ELSE 1 END,
+                CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
+                aggregate.VoteCount,
+                aggregate.MicroRatio,
+                aggregate.MesoRatio,
+                aggregate.MacroRatio
+            FROM SteamGames AS steam
+            INNER JOIN GameVoteAggregates AS aggregate
+                ON aggregate.GameId = steam.GameId
+            LEFT JOIN DevelopmentGameInfo AS info
+                ON info.GameId = steam.GameId
+            LEFT JOIN GameAtlasIcons AS atlas
+                ON atlas.GameId = steam.GameId
+            ORDER BY steam.GameId;
+            """;
+
+        await using var connection = new SqliteConnection(database.Value);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await using var reader =
+            await command.ExecuteReaderAsync(cancellationToken);
+
+        var results = new List<AtlasGameDto>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var gameId = reader.GetInt64(0);
+            var storedImageUrl = reader.IsDBNull(2)
+                ? null
+                : reader.GetString(2);
+            var imageUrl = reader.GetBoolean(3)
+                ? $"{httpContext.Request.PathBase}/api/games/{gameId}/atlas-icon"
+                : storedImageUrl
+                    ?? (reader.GetBoolean(4)
+                        ? $"{httpContext.Request.PathBase}/api/games/{gameId}/image"
+                        : null);
+
+            results.Add(new AtlasGameDto(
+                GameId: gameId,
+                Name: reader.GetString(1),
+                ImageUrl: imageUrl,
+                VoteCount: reader.GetInt32(5),
+                MicroRatio: reader.GetDouble(6),
+                MesoRatio: reader.GetDouble(7),
+                MacroRatio: reader.GetDouble(8)));
         }
 
         return Results.Ok(results);
@@ -495,6 +560,15 @@ public static class GameEndpoints
         double? MicroRatio,
         double? MesoRatio,
         double? MacroRatio);
+
+    private sealed record AtlasGameDto(
+        long GameId,
+        string Name,
+        string? ImageUrl,
+        int VoteCount,
+        double MicroRatio,
+        double MesoRatio,
+        double MacroRatio);
 
     private sealed record VoteDto(
         double MicroScore,

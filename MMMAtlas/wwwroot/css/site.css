@@ -327,6 +327,310 @@ h2 {
     line-height: 1.65;
 }
 
+.visually-hidden {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.atlas-toolbar {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding: 0.9rem;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: 1.25rem 1.25rem 0 0;
+    background: rgba(21, 24, 33, 0.88);
+}
+
+.atlas-filters,
+.atlas-view-controls {
+    display: flex;
+    align-items: end;
+    gap: 0.65rem;
+}
+
+.atlas-filters {
+    flex: 1;
+}
+
+.atlas-filters label {
+    min-width: min(15rem, 42vw);
+    display: grid;
+    gap: 0.35rem;
+}
+
+.atlas-filters label > span {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.atlas-filters input,
+.atlas-filters select,
+.atlas-view-controls button {
+    min-height: 2.65rem;
+    border: 1px solid var(--line);
+    border-radius: 0.7rem;
+    background: var(--background);
+    color: var(--text);
+    font: inherit;
+}
+
+.atlas-filters input,
+.atlas-filters select {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+}
+
+.atlas-filters input::placeholder {
+    color: var(--muted);
+}
+
+.atlas-view-controls {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.atlas-view-controls button {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 720;
+}
+
+.atlas-view-controls button:first-child,
+.atlas-view-controls button:nth-child(2) {
+    width: 2.65rem;
+    padding-inline: 0;
+    font-size: 1.15rem;
+}
+
+.atlas-view-controls button:hover,
+.atlas-view-controls button:focus-visible {
+    border-color: rgba(91, 193, 169, 0.55);
+    background: var(--surface-raised);
+}
+
+.atlas-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 2.75rem;
+    padding: 0.55rem 1rem;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    background: var(--surface);
+}
+
+.atlas-status-row .game-api-status {
+    min-height: auto;
+    margin: 0;
+}
+
+.atlas-status-row > span {
+    flex: none;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.atlas-stage {
+    position: relative;
+    height: clamp(30rem, 72vh, 50rem);
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 0 0 1.25rem 1.25rem;
+    background:
+        radial-gradient(circle at center, rgba(255, 255, 255, 0.025), transparent 65%),
+        #10121a;
+    isolation: isolate;
+}
+
+.atlas-stage::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+    background-size: 2rem 2rem;
+    mask-image: radial-gradient(circle, black, transparent 78%);
+}
+
+.atlas-stage canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+    touch-action: none;
+}
+
+.atlas-stage canvas[data-dragging="true"] {
+    cursor: grabbing;
+}
+
+.atlas-stage canvas:focus-visible {
+    outline-offset: -5px;
+}
+
+.atlas-tooltip {
+    position: absolute;
+    z-index: 3;
+    width: min(17rem, calc(100% - 1.25rem));
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.75rem;
+    background: rgba(13, 15, 20, 0.94);
+    box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+}
+
+.atlas-tooltip strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.atlas-tooltip span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.4;
+}
+
+.atlas-stage-help {
+    position: absolute;
+    right: 0.8rem;
+    bottom: 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    pointer-events: none;
+}
+
+.atlas-stage-help span {
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(13, 15, 20, 0.78);
+    color: var(--muted);
+    font-size: 0.65rem;
+}
+
+.atlas-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 0.75rem 0.2rem;
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+
+.atlas-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.atlas-swatch {
+    width: 0.65rem;
+    aspect-ratio: 1;
+    border-radius: 50%;
+}
+
+.atlas-swatch-micro {
+    background: var(--micro);
+}
+
+.atlas-swatch-meso {
+    background: var(--meso);
+}
+
+.atlas-swatch-macro {
+    background: var(--macro);
+}
+
+.atlas-swatch-mixed {
+    background: #c7c8c2;
+}
+
+.atlas-results {
+    margin-top: 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 1rem;
+    background: var(--surface);
+}
+
+.atlas-results summary {
+    padding: 1rem;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.atlas-result-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+    max-height: 30rem;
+    margin: 0;
+    padding: 0 1rem 1rem;
+    overflow: auto;
+    list-style: none;
+}
+
+.atlas-result[hidden] {
+    display: none;
+}
+
+.atlas-result-button {
+    width: 100%;
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    border: 1px solid transparent;
+    border-radius: 0.7rem;
+    background: var(--background);
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+}
+
+.atlas-result-button:hover,
+.atlas-result-button:focus-visible {
+    border-color: rgba(91, 193, 169, 0.5);
+    background: var(--surface-raised);
+}
+
+.atlas-result-button strong,
+.atlas-result-button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.atlas-result-button span {
+    color: var(--muted);
+    font-size: 0.7rem;
+}
+
 .game-api-status {
     min-height: 1.5rem;
     margin: 0 0 1rem;
@@ -1098,6 +1402,19 @@ h2 {
         grid-template-columns: 1fr;
     }
 
+    .atlas-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .atlas-view-controls {
+        justify-content: flex-start;
+    }
+
+    .atlas-stage {
+        height: clamp(28rem, 68vh, 42rem);
+    }
+
     .game-list-panel {
         border-right: 0;
         border-bottom: 1px solid var(--line);
@@ -1125,6 +1442,32 @@ h2 {
 }
 
 @media (max-width: 520px) {
+    .atlas-filters {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .atlas-filters label {
+        min-width: 0;
+    }
+
+    .atlas-status-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .atlas-stage {
+        height: 30rem;
+    }
+
+    .atlas-stage-help span:last-child {
+        display: none;
+    }
+
+    .atlas-result-list {
+        grid-template-columns: 1fr;
+    }
+
     .game-card {
         grid-template-columns: 5rem minmax(0, 1fr);
     }
