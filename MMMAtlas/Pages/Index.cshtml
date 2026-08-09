@@ -101,6 +101,29 @@
         </div>
     </div>
 
+    <form class="atlas-test-controls" data-atlas-test-controls hidden>
+        <div class="atlas-test-heading">
+            <strong>Canvas test points</strong>
+            <span>Enabled by the Canvas test launch profile or URL parameters.</span>
+        </div>
+        <label>
+            <span>Point count</span>
+            <input
+                type="number"
+                min="0"
+                max="20000"
+                step="100"
+                inputmode="numeric"
+                data-atlas-test-count />
+        </label>
+        <label>
+            <span>Random seed</span>
+            <input type="text" maxlength="80" data-atlas-test-seed />
+        </label>
+        <button type="submit">Apply points</button>
+        <button type="button" data-atlas-test-clear>Clear</button>
+    </form>
+
     <div class="atlas-status-row">
         <p class="game-api-status" data-game-status role="status" data-state="loading">
             Loading the community atlas&hellip;

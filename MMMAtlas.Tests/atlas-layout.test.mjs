@@ -36,8 +36,61 @@ test("projects pure and balanced distributions to ternary anchors", () => {
         meso: 1 / 3,
         macro: 1 / 3
     });
-    assert.ok(Math.abs(balanced.x - 0.5) < 0.000001);
-    assert.ok(Math.abs(balanced.y - 0.6) < 0.000001);
+    const anchorCenter = {
+        x: Object.values(layout.atlasAnchors)
+            .reduce((total, anchor) => total + anchor.x, 0) / 3,
+        y: Object.values(layout.atlasAnchors)
+            .reduce((total, anchor) => total + anchor.y, 0) / 3
+    };
+    assert.ok(Math.abs(balanced.x - anchorCenter.x) < 0.000001);
+    assert.ok(Math.abs(balanced.y - anchorCenter.y) < 0.000001);
+});
+
+test("places pure axis anchors on the outward edge of each circle", () => {
+    const diagramCenter = {
+        x: Object.values(layout.atlasCircleCenters)
+            .reduce((total, center) => total + center.x, 0) / 3,
+        y: Object.values(layout.atlasCircleCenters)
+            .reduce((total, center) => total + center.y, 0) / 3
+    };
+
+    for (const axis of ["micro", "meso", "macro"]) {
+        const center = layout.atlasCircleCenters[axis];
+        const anchor = layout.atlasAnchors[axis];
+        assert.ok(Math.abs(
+            Math.hypot(anchor.x - center.x, anchor.y - center.y)
+                - layout.atlasCircleRadius) < 0.000001);
+
+        const centerDistance = Math.hypot(
+            center.x - diagramCenter.x,
+            center.y - diagramCenter.y);
+        const anchorDistance = Math.hypot(
+            anchor.x - diagramCenter.x,
+            anchor.y - diagramCenter.y);
+        assert.ok(anchorDistance > centerDistance);
+    }
+});
+
+test("aligns 20 percent membership transitions with circle overlap", () => {
+    assert.equal(layout.membershipCutoff, 0.2);
+    const axes = ["micro", "meso", "macro"];
+
+    for (const primary of axes) {
+        for (const secondary of axes) {
+            if (primary === secondary) {
+                continue;
+            }
+            const ratios = { micro: 0, meso: 0, macro: 0 };
+            ratios[primary] = 1 - layout.membershipCutoff;
+            ratios[secondary] = layout.membershipCutoff;
+            const point = layout.projectRatios(ratios);
+            const circle = layout.atlasCircleCenters[secondary];
+            const boundaryError = Math.abs(
+                Math.hypot(point.x - circle.x, point.y - circle.y)
+                    - layout.atlasCircleRadius);
+            assert.ok(boundaryError < 0.005);
+        }
+    }
 });
 
 test("increasing Micro moves a point monotonically toward the Micro anchor", () => {
@@ -52,8 +105,25 @@ test("increasing Micro moves a point monotonically toward the Micro anchor", () 
 test("classifies dominant and cutoff-based memberships", () => {
     assert.equal(layout.dominantCategory({ micro: 0.7, meso: 0.2, macro: 0.1 }), "micro");
     assert.equal(layout.dominantCategory({ micro: 0.4, meso: 0.3, macro: 0.3 }), "mixed");
-    assert.equal(layout.membershipCategory({ micro: 0.85, meso: 0.1, macro: 0.05 }), "micro-meso");
+    assert.equal(layout.membershipCategory({ micro: 0.8, meso: 0.2, macro: 0 }), "micro-meso");
+    assert.equal(layout.membershipCategory({ micro: 0.81, meso: 0.19, macro: 0 }), "micro");
     assert.equal(layout.membershipCategory({ micro: 0.34, meso: 0.33, macro: 0.33 }), "balanced");
+});
+
+test("creates deterministic uniformly valid test distributions", () => {
+    const first = layout.createRandomRatioDistributions(3_000, "canvas-load");
+    const second = layout.createRandomRatioDistributions(3_000, "canvas-load");
+    const different = layout.createRandomRatioDistributions(3_000, "other-seed");
+
+    assert.deepEqual(first, second);
+    assert.notDeepEqual(first, different);
+    assert.equal(first.length, 3_000);
+    for (const ratios of first) {
+        assert.ok(ratios.micro >= 0 && ratios.micro <= 1);
+        assert.ok(ratios.meso >= 0 && ratios.meso <= 1);
+        assert.ok(ratios.macro >= 0 && ratios.macro <= 1);
+        assert.ok(Math.abs(ratios.micro + ratios.meso + ratios.macro - 1) < 0.000001);
+    }
 });
 
 test("spatial hash finds nearby points across cell boundaries", () => {

@@ -423,6 +423,72 @@ h2 {
     background: var(--surface-raised);
 }
 
+.atlas-test-controls {
+    display: grid;
+    grid-template-columns: minmax(14rem, 1fr) minmax(8rem, 0.35fr) minmax(9rem, 0.45fr) auto auto;
+    align-items: end;
+    gap: 0.65rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid rgba(233, 185, 73, 0.32);
+    border-bottom: 0;
+    background: rgba(233, 185, 73, 0.055);
+}
+
+.atlas-test-controls[hidden] {
+    display: none;
+}
+
+.atlas-test-heading {
+    display: grid;
+    align-self: center;
+    gap: 0.2rem;
+}
+
+.atlas-test-heading strong {
+    color: var(--meso);
+    font-size: 0.84rem;
+}
+
+.atlas-test-heading span,
+.atlas-test-controls label > span {
+    color: var(--muted);
+    font-size: 0.68rem;
+}
+
+.atlas-test-controls label {
+    display: grid;
+    gap: 0.3rem;
+}
+
+.atlas-test-controls input,
+.atlas-test-controls button {
+    min-height: 2.45rem;
+    border: 1px solid var(--line);
+    border-radius: 0.65rem;
+    background: var(--background);
+    color: var(--text);
+    font: inherit;
+}
+
+.atlas-test-controls input {
+    width: 100%;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+}
+
+.atlas-test-controls button {
+    padding: 0.5rem 0.7rem;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 720;
+}
+
+.atlas-test-controls button:hover,
+.atlas-test-controls button:focus-visible {
+    border-color: rgba(233, 185, 73, 0.6);
+    background: var(--surface-raised);
+}
+
 .atlas-status-row {
     display: flex;
     align-items: center;
@@ -1407,6 +1473,14 @@ h2 {
         flex-direction: column;
     }
 
+    .atlas-test-controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .atlas-test-heading {
+        grid-column: 1 / -1;
+    }
+
     .atlas-view-controls {
         justify-content: flex-start;
     }
@@ -1442,6 +1516,14 @@ h2 {
 }
 
 @media (max-width: 520px) {
+    .atlas-test-controls {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .atlas-test-controls label {
+        grid-column: 1 / -1;
+    }
+
     .atlas-filters {
         align-items: stretch;
         flex-direction: column;

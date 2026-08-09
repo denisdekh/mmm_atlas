@@ -18,6 +18,16 @@
         "environmentVariables": {
           "ASPNETCORE_ENVIRONMENT": "Development"
         }
+      },
+      "canvas-test": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": true,
+        "launchUrl": "?atlasTest=1&atlasTestPoints=3000&atlasTestSeed=launch",
+        "applicationUrl": "http://localhost:5164",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
       }
     }
   }

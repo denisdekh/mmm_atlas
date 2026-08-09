@@ -68,6 +68,29 @@ test images, four users, twelve votes, ownership records, and aggregate
 statistics. Clear the environment variable or set it to `false` to return to
 the normal startup behavior.
 
+## Canvas load testing
+
+Launch the home-page Canvas with 3,000 deterministic synthetic points:
+
+```powershell
+dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile canvas-test
+```
+
+The test launch opens on port 5164 and exposes point-count and random-seed
+controls above the Canvas. Applying the controls updates the current URL, so a
+specific distribution can be reloaded or shared locally.
+
+Test mode can also be enabled on any launch with these query parameters:
+
+```text
+?atlasTest=1&atlasTestPoints=3000&atlasTestSeed=launch
+```
+
+`atlasTestPoints` accepts 0 through 20,000. Synthetic points use the normal
+filter, hover, zoom, collision, density, and icon-loading paths, but they never
+call the game-detail API or appear in the accessible real-game result list.
+Omit the parameters to keep the test controls hidden.
+
 ## HTTPS development
 
 HTTPS is optional for the current local API and UI work. To use it, trust the

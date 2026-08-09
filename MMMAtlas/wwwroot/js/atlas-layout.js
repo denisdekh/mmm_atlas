@@ -1,7 +1,42 @@
+export const atlasCircleCenters = Object.freeze({
+    // One quarter of the former center spacing aligns circle entry with a
+    // secondary-axis score of approximately 20 percent.
+    micro: Object.freeze({ x: 0.5, y: 0.47 }),
+    meso: Object.freeze({ x: 0.4, y: 0.665 }),
+    macro: Object.freeze({ x: 0.6, y: 0.665 })
+});
+export const atlasCircleRadius = 0.49;
+export const membershipCutoff = 0.2;
+
+const atlasCenter = Object.freeze({
+    x: (atlasCircleCenters.micro.x
+        + atlasCircleCenters.meso.x
+        + atlasCircleCenters.macro.x) / 3,
+    y: (atlasCircleCenters.micro.y
+        + atlasCircleCenters.meso.y
+        + atlasCircleCenters.macro.y) / 3
+});
+
 export const atlasAnchors = Object.freeze({
-    micro: Object.freeze({ x: 0.5, y: 0.08 }),
-    meso: Object.freeze({ x: 0.1, y: 0.86 }),
-    macro: Object.freeze({ x: 0.9, y: 0.86 })
+    micro: createOuterAnchor(atlasCircleCenters.micro),
+    meso: createOuterAnchor(atlasCircleCenters.meso),
+    macro: createOuterAnchor(atlasCircleCenters.macro)
+});
+
+export const atlasViewBounds = Object.freeze({
+    minimumX: Math.min(...Object.values(atlasCircleCenters)
+        .map((center) => center.x - atlasCircleRadius)),
+    maximumX: Math.max(...Object.values(atlasCircleCenters)
+        .map((center) => center.x + atlasCircleRadius)),
+    minimumY: Math.min(...Object.values(atlasCircleCenters)
+        .map((center) => center.y - atlasCircleRadius)),
+    maximumY: Math.max(...Object.values(atlasCircleCenters)
+        .map((center) => center.y + atlasCircleRadius))
+});
+
+export const atlasViewCenter = Object.freeze({
+    x: (atlasViewBounds.minimumX + atlasViewBounds.maximumX) / 2,
+    y: (atlasViewBounds.minimumY + atlasViewBounds.maximumY) / 2
 });
 
 const ratioTolerance = 0.02;
@@ -39,6 +74,16 @@ export function projectRatios(ratios, anchors = atlasAnchors) {
     };
 }
 
+function createOuterAnchor(circleCenter) {
+    const offsetX = circleCenter.x - atlasCenter.x;
+    const offsetY = circleCenter.y - atlasCenter.y;
+    const distance = Math.hypot(offsetX, offsetY);
+    return Object.freeze({
+        x: circleCenter.x + offsetX / distance * atlasCircleRadius,
+        y: circleCenter.y + offsetY / distance * atlasCircleRadius
+    });
+}
+
 export function dominantCategory(ratios) {
     const entries = [
         ["micro", ratios.micro],
@@ -49,10 +94,32 @@ export function dominantCategory(ratios) {
     return entries[0][1] >= 0.5 ? entries[0][0] : "mixed";
 }
 
-export function membershipCategory(ratios, cutoff = 0.1) {
+export function membershipCategory(ratios, cutoff = membershipCutoff) {
     const included = ["micro", "meso", "macro"]
         .filter((axis) => ratios[axis] >= cutoff);
     return included.length === 3 ? "balanced" : included.join("-") || "balanced";
+}
+
+export function createRandomRatioDistributions(count, seed = "mmm-atlas") {
+    const size = Math.max(0, Math.floor(Number(count) || 0));
+    const random = createSeededRandom(String(seed));
+    const distributions = [];
+
+    for (let index = 0; index < size; index++) {
+        let meso = random();
+        let macro = random();
+        if (meso + macro > 1) {
+            meso = 1 - meso;
+            macro = 1 - macro;
+        }
+        distributions.push({
+            micro: 1 - meso - macro,
+            meso,
+            macro
+        });
+    }
+
+    return distributions;
 }
 
 export class SpatialHash {
@@ -255,4 +322,20 @@ function deterministicDirection(leftId, rightId) {
     }
     const angle = (hash >>> 0) / 4294967296 * Math.PI * 2;
     return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+function createSeededRandom(seed) {
+    let state = 2166136261;
+    for (let index = 0; index < seed.length; index++) {
+        state ^= seed.charCodeAt(index);
+        state = Math.imul(state, 16777619);
+    }
+
+    return () => {
+        state += 0x6d2b79f5;
+        let value = state;
+        value = Math.imul(value ^ value >>> 15, value | 1);
+        value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+        return ((value ^ value >>> 14) >>> 0) / 4294967296;
+    };
 }

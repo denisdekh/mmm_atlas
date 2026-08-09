@@ -1,6 +1,11 @@
 import {
     SpatialHash,
     atlasAnchors,
+    atlasCircleCenters,
+    atlasCircleRadius,
+    atlasViewBounds,
+    atlasViewCenter,
+    createRandomRatioDistributions,
     dominantCategory,
     membershipCategory,
     normalizeRatios,
@@ -12,6 +17,8 @@ import {
 const minimumZoom = 0.75;
 const maximumZoom = 9;
 const pollIntervalMilliseconds = 45_000;
+const maximumTestPoints = 20_000;
+const testIconUrl = "/images/atlas-test-icon.svg";
 const iconTiers = Object.freeze({
     small: 32,
     medium: 64,
@@ -38,6 +45,9 @@ class AtlasController {
         this.count = root.querySelector("[data-game-count]");
         this.search = root.querySelector("[data-atlas-search]");
         this.categoryFilter = root.querySelector("[data-atlas-category]");
+        this.testControls = root.querySelector("[data-atlas-test-controls]");
+        this.testCountInput = root.querySelector("[data-atlas-test-count]");
+        this.testSeedInput = root.querySelector("[data-atlas-test-seed]");
         this.resultList = root.querySelector("[data-game-list]");
         this.tooltip = root.querySelector("[data-atlas-tooltip]");
         this.tooltipTitle = root.querySelector("[data-atlas-tooltip-title]");
@@ -62,6 +72,9 @@ class AtlasController {
         this.relaxAll = false;
         this.pendingRelaxNode = null;
         this.polling = false;
+        this.testConfiguration = readTestConfiguration();
+        this.testGeneration = 0;
+        this.testCleanupTimer = 0;
         this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
         this.palette = readPalette();
         this.iconCache = new IconCache(() => this.requestFrame());
@@ -70,6 +83,11 @@ class AtlasController {
             style: "percent",
             maximumFractionDigits: 1
         });
+        if (this.testConfiguration.enabled) {
+            this.testControls.hidden = false;
+            this.testCountInput.value = String(this.testConfiguration.count);
+            this.testSeedInput.value = this.testConfiguration.seed;
+        }
     }
 
     async start() {
@@ -100,6 +118,20 @@ class AtlasController {
             ?.addEventListener("click", () => this.fitFilteredGames());
         this.root.querySelector("[data-atlas-refresh]")
             ?.addEventListener("click", () => this.refreshAll());
+        this.testControls?.addEventListener("submit", (event) => {
+            event.preventDefault();
+            this.configureTestPoints(
+                this.testCountInput.value,
+                this.testSeedInput.value,
+                { updateUrl: true });
+        });
+        this.root.querySelector("[data-atlas-test-clear]")
+            ?.addEventListener("click", () => {
+                this.testCountInput.value = "0";
+                this.configureTestPoints(0, this.testSeedInput.value, {
+                    updateUrl: true
+                });
+            });
 
         this.canvas.addEventListener("pointerdown", (event) => this.onPointerDown(event));
         this.canvas.addEventListener("pointermove", (event) => this.onPointerMove(event));
@@ -149,7 +181,9 @@ class AtlasController {
             let changedCount = 0;
 
             for (const node of this.nodes.values()) {
-                node.present = false;
+                if (!node.test) {
+                    node.present = false;
+                }
             }
 
             for (const game of games) {
@@ -160,11 +194,18 @@ class AtlasController {
             }
 
             for (const [id, node] of this.nodes) {
-                if (!seen.has(id)) {
+                if (!node.test && !seen.has(id)) {
                     node.filteredIn = false;
                     node.targetAlpha = 0;
                     this.resultButtons.get(id)?.closest("li")?.setAttribute("hidden", "");
                 }
+            }
+
+            if (initial && this.testConfiguration.enabled) {
+                this.configureTestPoints(
+                    this.testConfiguration.count,
+                    this.testConfiguration.seed,
+                    { animate: false, updateUrl: false });
             }
 
             this.applyFilters({ announce: false });
@@ -175,7 +216,11 @@ class AtlasController {
             }
             this.updateStatus(invalidCount);
             document.dispatchEvent(new CustomEvent("mmm-atlas:atlas-ready", {
-                detail: { gameCount: games.length, changedCount }
+                detail: {
+                    gameCount: games.length,
+                    testPointCount: this.testConfiguration.count,
+                    changedCount
+                }
             }));
         } finally {
             this.polling = false;
@@ -194,6 +239,7 @@ class AtlasController {
 
     upsertGame(game, { animate }) {
         const id = String(game.gameId);
+        const isTest = game.isTest === true;
         const ratios = normalizeRatios(
             game.microRatio,
             game.mesoRatio,
@@ -221,6 +267,7 @@ class AtlasController {
                 alpha: animate && !this.reducedMotion.matches ? 0 : 1,
                 targetAlpha: 1,
                 present: true,
+                test: isTest,
                 filteredIn: true,
                 category: dominantCategory(ratios),
                 membership: membershipCategory(ratios),
@@ -232,11 +279,14 @@ class AtlasController {
                 displayRadius: 2
             };
             this.nodes.set(id, node);
-            this.createResult(node);
+            if (!node.test) {
+                this.createResult(node);
+            }
         } else {
             node.game = game;
             node.ratios = ratios;
             node.present = true;
+            node.test = isTest;
             node.targetWorldX = projected.x;
             node.targetWorldY = projected.y;
             node.category = dominantCategory(ratios);
@@ -252,7 +302,76 @@ class AtlasController {
         return { invalid: false, changed: isNew || moved };
     }
 
+    configureTestPoints(countValue, seedValue, {
+        animate = true,
+        updateUrl = false
+    } = {}) {
+        const count = clamp(
+            Math.floor(Number(countValue) || 0),
+            0,
+            maximumTestPoints);
+        const seed = String(seedValue || "mmm-atlas").trim() || "mmm-atlas";
+        const generation = ++this.testGeneration;
+
+        for (const node of this.nodes.values()) {
+            if (node.test) {
+                node.present = false;
+                node.filteredIn = false;
+                node.targetAlpha = 0;
+            }
+        }
+
+        const distributions = createRandomRatioDistributions(count, seed);
+        for (let index = 0; index < distributions.length; index++) {
+            const ratios = distributions[index];
+            this.upsertGame({
+                gameId: `test-${generation}-${index + 1}`,
+                name: `Test point ${index + 1}`,
+                imageUrl: testIconUrl,
+                voteCount: 0,
+                microRatio: ratios.micro,
+                mesoRatio: ratios.meso,
+                macroRatio: ratios.macro,
+                isTest: true
+            }, { animate });
+        }
+
+        this.testConfiguration = { enabled: true, count, seed };
+        this.testControls.hidden = false;
+        this.testCountInput.value = String(count);
+        this.testSeedInput.value = seed;
+        if (updateUrl) {
+            const url = new URL(window.location.href);
+            url.searchParams.set("atlasTest", "1");
+            url.searchParams.set("atlasTestPoints", String(count));
+            url.searchParams.set("atlasTestSeed", seed);
+            history.replaceState(null, "", url);
+        }
+
+        window.clearTimeout(this.testCleanupTimer);
+        this.testCleanupTimer = window.setTimeout(() => {
+            for (const [id, node] of this.nodes) {
+                if (node.test && !node.present) {
+                    if (this.hoveredNode === node) {
+                        this.hoveredNode = null;
+                    }
+                    if (this.selectedNode === node) {
+                        this.selectedNode = null;
+                    }
+                    this.nodes.delete(id);
+                }
+            }
+            this.requestFrame();
+        }, this.reducedMotion.matches ? 0 : 650);
+
+        this.applyFilters();
+        this.queueRelaxation(null, 160);
+    }
+
     createResult(node) {
+        if (node.test) {
+            return;
+        }
         const item = document.createElement("li");
         item.className = "atlas-result";
         const button = document.createElement("button");
@@ -287,8 +406,6 @@ class AtlasController {
     applyFilters({ announce = true } = {}) {
         const query = this.search?.value.trim().toLocaleLowerCase() ?? "";
         const category = this.categoryFilter?.value ?? "all";
-        let visibleCount = 0;
-
         for (const node of this.nodes.values()) {
             const matchesName = !query
                 || node.game.name.toLocaleLowerCase().includes(query);
@@ -300,35 +417,81 @@ class AtlasController {
             if (listItem) {
                 listItem.hidden = !visible;
             }
-            visibleCount += visible ? 1 : 0;
         }
 
         if (this.selectedNode && !this.selectedNode.filteredIn) {
             this.selectedNode = null;
         }
-        const totalCount = [...this.nodes.values()].filter((node) => node.present).length;
-        this.count.textContent = `${this.numberFormat.format(visibleCount)} of ${this.numberFormat.format(totalCount)} games`;
+        const visibleCounts = this.getPointCounts({ visibleOnly: true });
+        const totalCounts = this.getPointCounts();
+        this.updateCountLabel(visibleCounts, totalCounts);
         if (announce) {
             this.status.dataset.state = "ready";
-            this.status.textContent = visibleCount === 0
-                ? "No games match the current filters."
-                : `Showing ${this.numberFormat.format(visibleCount)} rated ${visibleCount === 1 ? "game" : "games"}.`;
+            this.status.textContent = visibleCounts.total === 0
+                ? totalCounts.tests > 0
+                    ? "No points match the current filters."
+                    : "No games match the current filters."
+                : this.formatVisibleCounts(visibleCounts);
         }
         this.queueRelaxation(null, 140);
         this.requestFrame();
     }
 
     updateStatus(invalidCount) {
-        const visibleCount = [...this.nodes.values()]
-            .filter((node) => node.filteredIn).length;
+        const visibleCounts = this.getPointCounts({ visibleOnly: true });
+        const totalCounts = this.getPointCounts();
+        this.updateCountLabel(visibleCounts, totalCounts);
         this.status.dataset.state = "ready";
         if (invalidCount > 0) {
-            this.status.textContent = `Showing ${this.numberFormat.format(visibleCount)} games; ${invalidCount} malformed ${invalidCount === 1 ? "record was" : "records were"} skipped.`;
-        } else if (visibleCount === 0) {
-            this.status.textContent = "No games match the current filters.";
+            const prefix = visibleCounts.total > 0
+                ? this.formatVisibleCounts(visibleCounts)
+                : "No valid games are available.";
+            this.status.textContent = `${prefix} ${invalidCount} malformed ${invalidCount === 1 ? "record was" : "records were"} skipped.`;
+        } else if (visibleCounts.total === 0) {
+            this.status.textContent = totalCounts.tests > 0
+                ? "No points match the current filters."
+                : "No games match the current filters.";
         } else {
-            this.status.textContent = `Showing ${this.numberFormat.format(visibleCount)} rated ${visibleCount === 1 ? "game" : "games"}. Pan, zoom, or filter to explore.`;
+            this.status.textContent = `${this.formatVisibleCounts(visibleCounts)} Pan, zoom, or filter to explore.`;
         }
+    }
+
+    getPointCounts({ visibleOnly = false } = {}) {
+        let games = 0;
+        let tests = 0;
+        for (const node of this.nodes.values()) {
+            if (!node.present || (visibleOnly && !node.filteredIn)) {
+                continue;
+            }
+            if (node.test) {
+                tests++;
+            } else {
+                games++;
+            }
+        }
+        return { games, tests, total: games + tests };
+    }
+
+    updateCountLabel(visible, total) {
+        if (total.tests === 0) {
+            this.count.textContent = `${this.numberFormat.format(visible.games)} of ${this.numberFormat.format(total.games)} ${total.games === 1 ? "game" : "games"}`;
+            return;
+        }
+        const suffix = total.tests > 0
+            ? ` · ${this.numberFormat.format(visible.tests)} test`
+            : "";
+        this.count.textContent = `${this.numberFormat.format(visible.total)} of ${this.numberFormat.format(total.total)} ${total.total === 1 ? "point" : "points"}${suffix}`;
+    }
+
+    formatVisibleCounts(counts) {
+        const parts = [];
+        if (counts.games > 0) {
+            parts.push(`${this.numberFormat.format(counts.games)} rated ${counts.games === 1 ? "game" : "games"}`);
+        }
+        if (counts.tests > 0) {
+            parts.push(`${this.numberFormat.format(counts.tests)} test ${counts.tests === 1 ? "point" : "points"}`);
+        }
+        return `Showing ${parts.join(" and ")}.`;
     }
 
     showFailure(error) {
@@ -348,7 +511,7 @@ class AtlasController {
         this.viewport = {
             width,
             height,
-            baseScale: Math.min(width, height) * 0.91,
+            baseScale: calculateBaseScale(width, height),
             dpr
         };
         this.canvas.width = Math.round(width * dpr);
@@ -482,7 +645,9 @@ class AtlasController {
     }
 
     drawBackground(context) {
-        const circleRadius = this.viewport.baseScale * this.camera.zoom * 0.49;
+        const circleRadius = this.viewport.baseScale
+            * this.camera.zoom
+            * atlasCircleRadius;
         const axes = [
             ["micro", "Micro"],
             ["meso", "Meso"],
@@ -491,7 +656,9 @@ class AtlasController {
 
         context.save();
         for (const [axis] of axes) {
-            const center = this.worldToScreen(atlasAnchors[axis].x, atlasAnchors[axis].y);
+            const center = this.worldToScreen(
+                atlasCircleCenters[axis].x,
+                atlasCircleCenters[axis].y);
             context.beginPath();
             context.arc(center.x, center.y, circleRadius, 0, Math.PI * 2);
             context.globalAlpha = 0.045;
@@ -521,7 +688,9 @@ class AtlasController {
         context.textAlign = "center";
         context.textBaseline = "middle";
         for (const [axis, label] of axes) {
-            const anchor = this.worldToScreen(atlasAnchors[axis].x, atlasAnchors[axis].y);
+            const anchor = this.worldToScreen(
+                atlasCircleCenters[axis].x,
+                atlasCircleCenters[axis].y);
             context.fillStyle = this.palette[axis];
             context.fillText(label, anchor.x, anchor.y - 21);
         }
@@ -754,10 +923,12 @@ class AtlasController {
     worldToScreen(x, y) {
         return {
             x: this.viewport.width / 2
-                + (x - 0.5) * this.viewport.baseScale * this.camera.zoom
+                + (x - atlasViewCenter.x)
+                    * this.viewport.baseScale * this.camera.zoom
                 + this.camera.panX,
             y: this.viewport.height / 2
-                + (y - 0.5) * this.viewport.baseScale * this.camera.zoom
+                + (y - atlasViewCenter.y)
+                    * this.viewport.baseScale * this.camera.zoom
                 + this.camera.panY
         };
     }
@@ -827,8 +998,10 @@ class AtlasController {
         const centerX = (minimumX + maximumX) / 2;
         const centerY = (minimumY + maximumY) / 2;
         this.camera.zoom = zoom;
-        this.camera.panX = -(centerX - 0.5) * this.viewport.baseScale * zoom;
-        this.camera.panY = -(centerY - 0.5) * this.viewport.baseScale * zoom;
+        this.camera.panX = -(centerX - atlasViewCenter.x)
+            * this.viewport.baseScale * zoom;
+        this.camera.panY = -(centerY - atlasViewCenter.y)
+            * this.viewport.baseScale * zoom;
         this.clampCamera();
         this.queueRelaxation(null, 130);
         this.requestFrame();
@@ -942,9 +1115,7 @@ class AtlasController {
         if (!wasDragged) {
             const node = this.hitTest(point.x, point.y);
             if (node) {
-                this.selectedNode = node;
-                this.resultButtons.get(node.id)?.click();
-                this.requestFrame();
+                this.activateNode(node);
             }
         }
     }
@@ -982,7 +1153,7 @@ class AtlasController {
         }
         if (event.key === "Enter" && this.selectedNode) {
             event.preventDefault();
-            this.resultButtons.get(this.selectedNode.id)?.click();
+            this.activateNode(this.selectedNode);
             return;
         }
         if (event.key === "Escape") {
@@ -1059,6 +1230,14 @@ class AtlasController {
         this.requestFrame();
     }
 
+    activateNode(node) {
+        this.selectedNode = node;
+        if (!node.test) {
+            this.resultButtons.get(node.id)?.click();
+        }
+        this.requestFrame();
+    }
+
     positionTooltip() {
         const node = this.hoveredNode ?? (this.canvas.matches(":focus-visible")
             ? this.selectedNode
@@ -1068,7 +1247,9 @@ class AtlasController {
             return;
         }
         this.tooltipTitle.textContent = node.game.name;
-        this.tooltipMeta.textContent = `${this.numberFormat.format(node.game.voteCount)} ${node.game.voteCount === 1 ? "community vote" : "community votes"}`;
+        this.tooltipMeta.textContent = node.test
+            ? "Synthetic Canvas test point"
+            : `${this.numberFormat.format(node.game.voteCount)} ${node.game.voteCount === 1 ? "community vote" : "community votes"}`;
         this.tooltipRatios.textContent = this.formatRatios(node);
         this.tooltip.hidden = false;
         const tooltipWidth = this.tooltip.offsetWidth || 220;
@@ -1179,6 +1360,31 @@ class IconCache {
             this.entries.delete(removable[index][0]);
         }
     }
+}
+
+function readTestConfiguration() {
+    const parameters = new URLSearchParams(window.location.search);
+    const countValue = parameters.get("atlasTestPoints")
+        ?? parameters.get("testPoints");
+    const enabled = parameters.get("atlasTest") === "1"
+        || countValue !== null;
+    return {
+        enabled,
+        count: clamp(
+            Math.floor(Number(countValue) || 0),
+            0,
+            maximumTestPoints),
+        seed: parameters.get("atlasTestSeed")?.trim() || "mmm-atlas"
+    };
+}
+
+function calculateBaseScale(width, height) {
+    const diagramWidth = atlasViewBounds.maximumX - atlasViewBounds.minimumX;
+    const diagramHeight = atlasViewBounds.maximumY - atlasViewBounds.minimumY;
+    const paddingFactor = 1.06;
+    return Math.min(
+        width / (diagramWidth * paddingFactor),
+        height / (diagramHeight * paddingFactor));
 }
 
 async function fetchJson(url) {
