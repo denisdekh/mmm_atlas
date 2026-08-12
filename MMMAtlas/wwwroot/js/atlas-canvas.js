@@ -5,6 +5,7 @@ import {
     atlasCircleRadius,
     atlasViewBounds,
     atlasViewCenter,
+    calculateAtlasRenderStyle,
     createRandomRatioDistributions,
     dominantCategory,
     membershipCategory,
@@ -15,7 +16,7 @@ import {
 } from "./atlas-layout.js";
 
 const minimumZoom = 0.75;
-const maximumZoom = 9;
+const maximumZoom = 36;
 const pollIntervalMilliseconds = 45_000;
 const maximumTestPoints = 20_000;
 const testIconUrl = "/images/atlas-test-icon.svg";
@@ -54,6 +55,7 @@ class AtlasController {
         this.tooltipMeta = root.querySelector("[data-atlas-tooltip-meta]");
         this.tooltipRatios = root.querySelector("[data-atlas-tooltip-ratios]");
         this.nodes = new Map();
+        this.nodeSequence = 0;
         this.resultButtons = new Map();
         this.hitIndex = new SpatialHash(56);
         this.visibleNodes = [];
@@ -61,7 +63,10 @@ class AtlasController {
         this.hoveredNode = null;
         this.camera = { zoom: 1, panX: 0, panY: 0 };
         this.viewport = { width: 1, height: 1, baseScale: 1 };
+        this.filteredPointCount = 0;
         this.currentLod = this.getLod();
+        this.lastSimulationKey = this.currentLod.simulationKey;
+        this.hasInitializedLod = false;
         this.frameRequest = 0;
         this.lastFrameTime = 0;
         this.pointer = null;
@@ -69,6 +74,8 @@ class AtlasController {
         this.pinching = false;
         this.pinchState = null;
         this.relaxationTimer = 0;
+        this.interactiveRelaxationRequest = 0;
+        this.lastInteractiveRelaxationTime = Number.NEGATIVE_INFINITY;
         this.relaxAll = false;
         this.pendingRelaxNode = null;
         this.polling = false;
@@ -258,6 +265,7 @@ class AtlasController {
         if (!node) {
             node = {
                 id,
+                sortOrder: this.nodeSequence++,
                 game,
                 ratios,
                 targetWorldX: projected.x,
@@ -406,6 +414,7 @@ class AtlasController {
     applyFilters({ announce = true } = {}) {
         const query = this.search?.value.trim().toLocaleLowerCase() ?? "";
         const category = this.categoryFilter?.value ?? "all";
+        let filteredPointCount = 0;
         for (const node of this.nodes.values()) {
             const matchesName = !query
                 || node.game.name.toLocaleLowerCase().includes(query);
@@ -413,6 +422,7 @@ class AtlasController {
             const visible = node.present && matchesName && matchesCategory;
             node.filteredIn = visible;
             node.targetAlpha = visible ? 1 : 0;
+            filteredPointCount += visible ? 1 : 0;
             const listItem = this.resultButtons.get(node.id)?.closest("li");
             if (listItem) {
                 listItem.hidden = !visible;
@@ -421,6 +431,12 @@ class AtlasController {
 
         if (this.selectedNode && !this.selectedNode.filteredIn) {
             this.selectedNode = null;
+        }
+        this.filteredPointCount = filteredPointCount;
+        if (!this.hasInitializedLod && filteredPointCount > 0) {
+            this.currentLod = this.getLod();
+            this.lastSimulationKey = this.currentLod.simulationKey;
+            this.hasInitializedLod = true;
         }
         const visibleCounts = this.getPointCounts({ visibleOnly: true });
         const totalCounts = this.getPointCounts();
@@ -546,7 +562,23 @@ class AtlasController {
         const immediate = this.reducedMotion.matches;
         const positionBlend = immediate ? 1 : 1 - Math.exp(-9 * deltaSeconds);
         const alphaBlend = immediate ? 1 : 1 - Math.exp(-12 * deltaSeconds);
-        let animating = false;
+        const lodBlend = immediate ? 1 : 1 - Math.exp(-10 * deltaSeconds);
+        const targetLod = this.getLod();
+        const radius = approach(
+            this.currentLod.radius,
+            targetLod.radius,
+            lodBlend);
+        const iconOpacity = approach(
+            this.currentLod.iconOpacity,
+            targetLod.iconOpacity,
+            lodBlend);
+        let animating = Math.abs(radius - targetLod.radius) > 0.01
+            || Math.abs(iconOpacity - targetLod.iconOpacity) > 0.005;
+        this.currentLod = {
+            ...targetLod,
+            radius,
+            iconOpacity
+        };
 
         for (const node of this.nodes.values()) {
             node.worldX = approach(node.worldX, node.targetWorldX, positionBlend);
@@ -577,12 +609,9 @@ class AtlasController {
         context.clearRect(0, 0, width, height);
         this.drawBackground(context);
 
-        const nextLod = this.getLod();
-        if (nextLod.key !== this.currentLod.key) {
-            this.currentLod = nextLod;
+        if (this.lastSimulationKey !== this.currentLod.simulationKey) {
+            this.lastSimulationKey = this.currentLod.simulationKey;
             this.queueRelaxation(null, 100);
-        } else {
-            this.currentLod = nextLod;
         }
 
         const drawNodes = [];
@@ -596,7 +625,7 @@ class AtlasController {
             node.screenTargetY = target.y;
             node.screenX = target.x;
             node.screenY = target.y;
-            node.displayRadius = 2.45;
+            node.displayRadius = this.currentLod.radius;
             node.renderAsIcon = false;
             if (target.x >= -margin && target.x <= width + margin
                 && target.y >= -margin && target.y <= height + margin) {
@@ -604,36 +633,28 @@ class AtlasController {
             }
         }
 
-        drawNodes.sort((left, right) => left.game.voteCount - right.game.voteCount
-            || Number(left.id) - Number(right.id));
-        if (this.currentLod.key === "dot") {
-            this.drawDots(context, drawNodes);
-        } else {
-            const iconNodes = this.selectIconNodes(drawNodes, this.currentLod);
-            const pointNodes = [];
-            for (const node of drawNodes) {
-                if (!iconNodes.has(node)) {
-                    pointNodes.push(node);
-                    continue;
-                }
-                const offset = this.getOffset(node, this.currentLod.key);
-                node.screenX = node.screenTargetX + offset.x;
-                node.screenY = node.screenTargetY + offset.y;
-                node.displayRadius = this.currentLod.radius;
-                node.renderAsIcon = true;
-            }
-            this.drawDots(context, pointNodes);
-            for (const node of drawNodes) {
-                if (!node.renderAsIcon) {
-                    continue;
-                }
+        const iconNodes = this.currentLod.iconOpacity > 0.01
+            ? this.selectIconNodes(drawNodes, this.currentLod)
+            : new Set();
+        const promoted = this.hoveredNode ?? this.selectedNode;
+        if (promoted
+            && drawNodes.includes(promoted)
+            && this.currentLod.iconOpacity > 0.01) {
+            iconNodes.add(promoted);
+        }
+        for (const node of iconNodes) {
+            const offset = node.offsets.get(this.currentLod.key);
+            node.screenX = node.screenTargetX
+                + (offset?.x ?? 0) * this.currentLod.iconOpacity;
+            node.screenY = node.screenTargetY
+                + (offset?.y ?? 0) * this.currentLod.iconOpacity;
+            node.displayRadius = this.currentLod.radius;
+            node.renderAsIcon = true;
+        }
+        this.drawDots(context, drawNodes);
+        for (const node of iconNodes) {
+            if (node.renderAsIcon) {
                 this.drawIcon(context, node, this.currentLod);
-            }
-            const promoted = this.hoveredNode ?? this.selectedNode;
-            if (promoted && drawNodes.includes(promoted) && !promoted.renderAsIcon) {
-                promoted.displayRadius = this.currentLod.radius;
-                promoted.renderAsIcon = true;
-                this.drawIcon(context, promoted, this.currentLod);
             }
         }
 
@@ -702,37 +723,61 @@ class AtlasController {
             context.globalAlpha = node.alpha * 0.82;
             context.fillStyle = this.colorFor(node);
             context.beginPath();
-            context.arc(node.screenX, node.screenY, 2.45, 0, Math.PI * 2);
+            context.arc(
+                node.screenX,
+                node.screenY,
+                node.displayRadius,
+                0,
+                Math.PI * 2);
             context.fill();
         }
         context.globalAlpha = 1;
     }
 
-    selectIconNodes(nodes, lod) {
-        const cellSize = Math.max(12, lod.radius * 1.6);
-        const capacity = lod.key === "small" ? 1 : lod.key === "medium" ? 2 : 4;
+    selectIconNodes(nodes, lod, { simulation = false } = {}) {
+        if (lod.showAllIcons
+            || (!simulation && lod.renderAllIcons)
+            || (simulation && lod.renderAllIcons && nodes.length <= 240)) {
+            return new Set(nodes);
+        }
+        const cellSize = lod.assetTier === "large"
+            ? 44
+            : lod.assetTier === "medium"
+                ? 32
+                : 20;
+        const footprint = cellSize;
+        const viewportCapacity = Math.floor(
+            this.viewport.width * this.viewport.height / (footprint * footprint));
+        const maximumItems = simulation
+            ? Math.min(240, viewportCapacity)
+            : clamp(viewportCapacity, 80, 600);
         return selectSpatialRepresentatives(nodes, {
             cellSize,
-            capacity,
-            maximumItems: 900,
+            capacity: 1,
+            maximumItems,
             getX: (node) => node.screenTargetX,
             getY: (node) => node.screenTargetY,
             compare: (left, right) =>
                 right.game.voteCount - left.game.voteCount
-                || Number(left.id) - Number(right.id)
+                || left.sortOrder - right.sortOrder
         });
     }
 
     drawIcon(context, node, lod) {
-        const radius = lod.radius * (0.78 + node.alpha * 0.22);
+        const radius = node.displayRadius;
         context.save();
-        context.globalAlpha = node.alpha;
+        context.globalAlpha = node.alpha * lod.iconOpacity;
         context.beginPath();
-        context.arc(node.screenX, node.screenY, radius + 2, 0, Math.PI * 2);
+        context.arc(node.screenX, node.screenY, radius, 0, Math.PI * 2);
         context.fillStyle = this.colorFor(node);
         context.fill();
         context.beginPath();
-        context.arc(node.screenX, node.screenY, radius, 0, Math.PI * 2);
+        context.arc(
+            node.screenX,
+            node.screenY,
+            Math.max(1, radius - 1),
+            0,
+            Math.PI * 2);
         context.clip();
 
         const image = node.game.imageUrl
@@ -806,7 +851,10 @@ class AtlasController {
     }
 
     queueRelaxation(node, delay = 100) {
-        if (this.currentLod.key === "dot") {
+        if (!this.getLod().simulate) {
+            window.clearTimeout(this.relaxationTimer);
+            this.relaxAll = false;
+            this.pendingRelaxNode = null;
             return;
         }
         if (!node) {
@@ -824,13 +872,35 @@ class AtlasController {
         }, delay);
     }
 
-    relaxLayout(focusNode) {
-        if (this.currentLod.key === "dot") {
+    queueInteractiveRelaxation() {
+        if (!this.currentLod.simulate || this.interactiveRelaxationRequest) {
+            return;
+        }
+
+        this.interactiveRelaxationRequest = window.requestAnimationFrame((timestamp) => {
+            this.interactiveRelaxationRequest = 0;
+            if ((!this.pointer?.dragged && !this.pinching)
+                || timestamp - this.lastInteractiveRelaxationTime < 48) {
+                return;
+            }
+            this.lastInteractiveRelaxationTime = timestamp;
+            this.relaxLayout(null, { interactive: true });
+        });
+    }
+
+    relaxLayout(focusNode, { interactive = false } = {}) {
+        if (!this.currentLod.simulate) {
             return;
         }
 
         const radius = this.currentLod.radius;
         const candidateNodes = [];
+        const viewportExtent = Math.min(
+            this.viewport.width,
+            this.viewport.height);
+        const simulationMargin = Math.max(radius * 2, viewportExtent * 0.04);
+        const focusLimit = Math.max(160, viewportExtent * 0.45);
+        const movableLimit = Math.max(130, viewportExtent * 0.35);
         const focus = focusNode
             ? this.worldToScreen(focusNode.targetWorldX, focusNode.targetWorldY)
             : null;
@@ -839,14 +909,16 @@ class AtlasController {
                 continue;
             }
             const target = this.worldToScreen(node.targetWorldX, node.targetWorldY);
-            if (target.x < -160 || target.x > this.viewport.width + 160
-                || target.y < -160 || target.y > this.viewport.height + 160) {
+            if (target.x < -simulationMargin
+                || target.x > this.viewport.width + simulationMargin
+                || target.y < -simulationMargin
+                || target.y > this.viewport.height + simulationMargin) {
                 continue;
             }
             const localDistance = focus
                 ? Math.hypot(target.x - focus.x, target.y - focus.y)
                 : 0;
-            if (focus && localDistance > 240) {
+            if (focus && localDistance > focusLimit) {
                 continue;
             }
             node.screenTargetX = target.x;
@@ -854,7 +926,10 @@ class AtlasController {
             candidateNodes.push(node);
         }
 
-        const eligibleNodes = this.selectIconNodes(candidateNodes, this.currentLod);
+        const eligibleNodes = this.selectIconNodes(
+            candidateNodes,
+            this.currentLod,
+            { simulation: true });
         if (focusNode && candidateNodes.includes(focusNode)) {
             eligibleNodes.add(focusNode);
         }
@@ -873,12 +948,12 @@ class AtlasController {
                 x: target.x + offset.x,
                 y: target.y + offset.y,
                 radius,
-                movable: !focus || localDistance <= 190
+                movable: !focus || localDistance <= movableLimit
             });
         }
 
         relaxPoints(allCandidates, {
-            iterations: focus ? 14 : 22,
+            iterations: focus ? 10 : interactive ? 5 : 16,
             anchorStrength: 0.09,
             padding: 1.25,
             maximumDisplacement: (point) => point.radius * 1.35
@@ -908,16 +983,13 @@ class AtlasController {
     }
 
     getLod() {
-        if (this.camera.zoom < 1.45) {
-            return { key: "dot", radius: 2.45, assetTier: null };
-        }
-        if (this.camera.zoom < 2.8) {
-            return { key: "small", radius: 9, assetTier: "small" };
-        }
-        if (this.camera.zoom < 5.2) {
-            return { key: "medium", radius: 15, assetTier: "medium" };
-        }
-        return { key: "large", radius: 24, assetTier: "large" };
+        const style = calculateAtlasRenderStyle(
+            this.filteredPointCount,
+            this.camera.zoom);
+        return {
+            ...style,
+            key: "icons"
+        };
     }
 
     worldToScreen(x, y) {
@@ -967,7 +1039,6 @@ class AtlasController {
         this.camera.zoom = 1;
         this.camera.panX = 0;
         this.camera.panY = 0;
-        this.currentLod = this.getLod();
         if (animate && !this.reducedMotion.matches) {
             // Camera changes are immediate so the user's focus never drifts.
         }
@@ -1030,6 +1101,7 @@ class AtlasController {
             previousY: point.y,
             dragged: false
         };
+        this.lastInteractiveRelaxationTime = Number.NEGATIVE_INFINITY;
         this.canvas.setPointerCapture(event.pointerId);
         this.canvas.dataset.dragging = "true";
         if (this.activePointers.size === 2) {
@@ -1069,6 +1141,7 @@ class AtlasController {
                 centerY: center.y
             };
             this.setHoveredNode(null);
+            this.queueInteractiveRelaxation();
             return;
         }
         if (this.pointer?.id === event.pointerId) {
@@ -1085,6 +1158,7 @@ class AtlasController {
                 this.clampCamera();
                 this.setHoveredNode(null);
                 this.requestFrame();
+                this.queueInteractiveRelaxation();
             }
             this.pointer.previousX = point.x;
             this.pointer.previousY = point.y;
@@ -1102,6 +1176,7 @@ class AtlasController {
                 this.pointer = null;
                 this.activePointers.clear();
                 delete this.canvas.dataset.dragging;
+                this.queueRelaxation(null, 120);
             }
             return;
         }
@@ -1112,7 +1187,9 @@ class AtlasController {
         const wasDragged = this.pointer.dragged;
         this.activePointers.delete(event.pointerId);
         this.cancelPointer();
-        if (!wasDragged) {
+        if (wasDragged) {
+            this.queueRelaxation(null, 120);
+        } else {
             const node = this.hitTest(point.x, point.y);
             if (node) {
                 this.activateNode(node);
@@ -1381,10 +1458,10 @@ function readTestConfiguration() {
 function calculateBaseScale(width, height) {
     const diagramWidth = atlasViewBounds.maximumX - atlasViewBounds.minimumX;
     const diagramHeight = atlasViewBounds.maximumY - atlasViewBounds.minimumY;
-    const paddingFactor = 1.06;
+    const screenPadding = 28;
     return Math.min(
-        width / (diagramWidth * paddingFactor),
-        height / (diagramHeight * paddingFactor));
+        Math.max(1, width - screenPadding * 2) / diagramWidth,
+        Math.max(1, height - screenPadding * 2) / diagramHeight);
 }
 
 async function fetchJson(url) {

@@ -100,6 +100,58 @@ export function membershipCategory(ratios, cutoff = membershipCutoff) {
     return included.length === 3 ? "balanced" : included.join("-") || "balanced";
 }
 
+export function calculateAtlasRenderStyle(pointCount, zoom) {
+    const count = Math.max(0, Math.floor(Number(pointCount) || 0));
+    const normalizedZoom = Math.max(0.75, Number(zoom) || 1);
+    const showAllIcons = count <= 100;
+    const densityRadius = showAllIcons
+        ? 20
+        : clampNumber(20 * Math.sqrt(100 / count), 3.5, 20);
+    const zoomSizeProgress = smoothstep(1, 9, normalizedZoom);
+    const standardRadius = showAllIcons
+        ? 20
+        : densityRadius + (20 - densityRadius) * zoomSizeProgress;
+    const inspectionSizeProgress = smoothstep(9, 18, normalizedZoom);
+    const closeInspectionSizeProgress = smoothstep(18, 36, normalizedZoom);
+    const radius = standardRadius
+        + 12 * inspectionSizeProgress
+        + 16 * closeInspectionSizeProgress;
+
+    const densityPressure = clampNumber(
+        Math.log(Math.max(1, count / 100)) / Math.log(30),
+        0,
+        1);
+    const sparseIconBias = 1 - smoothstep(100, 400, count);
+    const iconZoomStart = 2.5 + densityPressure * 2.5;
+    const zoomIconProgress = smoothstep(
+        iconZoomStart,
+        iconZoomStart + 2,
+        normalizedZoom);
+    const sizeIconProgress = smoothstep(8, 12, radius);
+    const iconOpacity = showAllIcons
+        ? 1
+        : Math.min(sizeIconProgress, Math.max(sparseIconBias, zoomIconProgress));
+    const renderAllIcons = showAllIcons || iconOpacity >= 0.98;
+    const simulate = showAllIcons || iconOpacity >= 0.65;
+    const assetTier = radius < 12
+        ? "small"
+        : radius < 18
+            ? "medium"
+            : "large";
+
+    return {
+        radius,
+        iconOpacity,
+        assetTier,
+        showAllIcons,
+        renderAllIcons,
+        simulate,
+        simulationKey: simulate
+            ? `${showAllIcons ? "all" : "representatives"}:${Math.round(radius / 4)}`
+            : "none"
+    };
+}
+
 export function createRandomRatioDistributions(count, seed = "mmm-atlas") {
     const size = Math.max(0, Math.floor(Number(count) || 0));
     const random = createSeededRandom(String(seed));
@@ -338,4 +390,13 @@ function createSeededRandom(seed) {
         value ^= value + Math.imul(value ^ value >>> 7, value | 61);
         return ((value ^ value >>> 14) >>> 0) / 4294967296;
     };
+}
+
+function clampNumber(value, minimum, maximum) {
+    return Math.min(maximum, Math.max(minimum, value));
+}
+
+function smoothstep(minimum, maximum, value) {
+    const progress = clampNumber((value - minimum) / (maximum - minimum), 0, 1);
+    return progress * progress * (3 - 2 * progress);
 }

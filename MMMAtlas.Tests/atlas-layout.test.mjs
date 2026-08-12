@@ -110,6 +110,43 @@ test("classifies dominant and cutoff-based memberships", () => {
     assert.equal(layout.membershipCategory({ micro: 0.34, meso: 0.33, macro: 0.33 }), "balanced");
 });
 
+test("adapts point size and icon visibility to density and zoom", () => {
+    const sparse = layout.calculateAtlasRenderStyle(100, 0.75);
+    assert.equal(sparse.radius, 20);
+    assert.equal(sparse.iconOpacity, 1);
+    assert.equal(sparse.showAllIcons, true);
+    assert.equal(sparse.simulate, true);
+
+    const denseOverview = layout.calculateAtlasRenderStyle(3_000, 1);
+    const denseZoomed = layout.calculateAtlasRenderStyle(3_000, 9);
+    assert.ok(denseOverview.radius < denseZoomed.radius);
+    assert.equal(denseOverview.iconOpacity, 0);
+    assert.equal(denseOverview.renderAllIcons, false);
+    assert.equal(denseOverview.simulate, false);
+    assert.equal(denseZoomed.radius, 20);
+    assert.ok(denseZoomed.iconOpacity > 0.99);
+    assert.equal(denseZoomed.renderAllIcons, true);
+    assert.equal(denseZoomed.simulate, true);
+
+    const maximumDensityZoomed = layout.calculateAtlasRenderStyle(20_000, 9);
+    assert.equal(maximumDensityZoomed.radius, 20);
+    assert.equal(maximumDensityZoomed.renderAllIcons, true);
+
+    const inspectionZoom = layout.calculateAtlasRenderStyle(20_000, 18);
+    assert.equal(inspectionZoom.radius, 32);
+    assert.equal(inspectionZoom.assetTier, "large");
+    assert.equal(inspectionZoom.renderAllIcons, true);
+
+    const maximumInspectionZoom = layout.calculateAtlasRenderStyle(20_000, 36);
+    assert.equal(maximumInspectionZoom.radius, 48);
+    assert.equal(maximumInspectionZoom.assetTier, "large");
+
+    const mediumOverview = layout.calculateAtlasRenderStyle(400, 1);
+    assert.ok(mediumOverview.radius > denseOverview.radius);
+    assert.ok(mediumOverview.radius < sparse.radius);
+    assert.equal(mediumOverview.showAllIcons, false);
+});
+
 test("creates deterministic uniformly valid test distributions", () => {
     const first = layout.createRandomRatioDistributions(3_000, "canvas-load");
     const second = layout.createRandomRatioDistributions(3_000, "canvas-load");
