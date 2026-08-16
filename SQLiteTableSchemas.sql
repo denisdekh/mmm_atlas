@@ -79,7 +79,6 @@ CREATE TABLE IF NOT EXISTS SteamGames
     Name         TEXT    NULL,
     Description  TEXT    NULL,
     ReleaseYear  INTEGER NULL,
-    IconUrl      TEXT    NULL,
     CreatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -116,8 +115,8 @@ CREATE TABLE IF NOT EXISTS GameAtlasIcons
         CHECK (ImageContentType = 'image/png'),
     CONSTRAINT CK_GameAtlasIcons_ImageContent_NotEmpty
         CHECK (length(ImageContent) > 0),
-    CONSTRAINT CK_GameAtlasIcons_Diameter_Range
-        CHECK (DiameterPixels BETWEEN 1 AND 200),
+    CONSTRAINT CK_GameAtlasIcons_Diameter_96
+        CHECK (DiameterPixels = 96),
     CONSTRAINT CK_GameAtlasIcons_LibraryCard_AllOrNone
         CHECK (
             (LibraryCardContentType IS NULL

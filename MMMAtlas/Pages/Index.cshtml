@@ -70,7 +70,8 @@
         </p>
     </div>
 
-    <div class="atlas-toolbar" aria-label="Atlas filters and view controls">
+    <div class="atlas-shell" data-atlas-shell>
+        <div class="atlas-toolbar" aria-label="Atlas filters and view controls">
         <div class="atlas-filters">
             <label>
                 <span>Find a game</span>
@@ -98,10 +99,14 @@
             <button type="button" data-atlas-fit>Fit results</button>
             <button type="button" data-atlas-reset>Reset</button>
             <button type="button" data-atlas-refresh>Refresh</button>
+            <button
+                type="button"
+                data-atlas-fullscreen
+                aria-pressed="false">Full screen</button>
         </div>
-    </div>
+        </div>
 
-    <form class="atlas-test-controls" data-atlas-test-controls hidden>
+        <form class="atlas-test-controls" data-atlas-test-controls hidden>
         <div class="atlas-test-heading">
             <strong>Canvas test points</strong>
             <span>Enabled by the Canvas test launch profile or URL parameters.</span>
@@ -122,23 +127,23 @@
         </label>
         <button type="submit">Apply points</button>
         <button type="button" data-atlas-test-clear>Clear</button>
-    </form>
+        </form>
 
-    <div class="atlas-status-row">
+        <div class="atlas-status-row">
         <p class="game-api-status" data-game-status role="status" data-state="loading">
             Loading the community atlas&hellip;
         </p>
         <span data-game-count>Waiting for API</span>
-    </div>
+        </div>
 
-    <p class="visually-hidden" id="atlas-description">
+        <p class="visually-hidden" id="atlas-description">
         An interactive ternary map. Games near the top emphasize Micro, games
         toward the lower left emphasize Meso, and games toward the lower right
         emphasize Macro. Use arrow keys to move between visible games, Enter to
         open one, plus and minus to zoom, and Home to reset the view.
-    </p>
+        </p>
 
-    <div class="atlas-stage" data-atlas-stage>
+        <div class="atlas-stage" data-atlas-stage>
         <canvas
             data-atlas-canvas
             tabindex="0"
@@ -160,19 +165,20 @@
             <span>Scroll or pinch to zoom</span>
             <span>Points reveal icons as you move closer</span>
         </div>
-    </div>
+        </div>
 
-    <div class="atlas-legend" aria-label="Atlas color legend">
+        <div class="atlas-legend" aria-label="Atlas color legend">
         <span><i class="atlas-swatch atlas-swatch-micro"></i>Micro</span>
         <span><i class="atlas-swatch atlas-swatch-meso"></i>Meso</span>
         <span><i class="atlas-swatch atlas-swatch-macro"></i>Macro</span>
         <span><i class="atlas-swatch atlas-swatch-mixed"></i>Mixed</span>
-    </div>
+        </div>
 
-    <details class="atlas-results">
-        <summary>Browse the filtered games as a list</summary>
-        <ul class="atlas-result-list" data-game-list></ul>
-    </details>
+        <details class="atlas-results">
+            <summary>Browse the filtered games as a list</summary>
+            <ul class="atlas-result-list" data-game-list></ul>
+        </details>
+    </div>
 
     <noscript>
         <p class="game-api-error">JavaScript is required to render the interactive atlas.</p>

@@ -193,9 +193,7 @@ public sealed class GameEndpointsTests
             "Store description",
             game.Summary);
         Assert.AreEqual(2024, game.ReleaseYear);
-        Assert.AreEqual(
-            "https://example.test/icon.jpg",
-            game.ImageUrl);
+        Assert.IsNull(game.ImageUrl);
         Assert.AreEqual(1, game.VoteCount);
         Assert.AreEqual(0.2, game.MicroRatio);
         Assert.AreEqual(0.3, game.MesoRatio);
@@ -222,7 +220,7 @@ public sealed class GameEndpointsTests
 
         var game = games.Single(candidate => candidate.GameId == 3);
         Assert.AreEqual("Real Table Game", game.Name);
-        Assert.AreEqual("https://example.test/icon.jpg", game.ImageUrl);
+        Assert.IsNull(game.ImageUrl);
         Assert.AreEqual(1, game.VoteCount);
         Assert.AreEqual(0.2, game.MicroRatio, 0.000001);
         Assert.AreEqual(0.3, game.MesoRatio, 0.000001);
@@ -461,7 +459,7 @@ public sealed class GameEndpointsTests
         string Name,
         string Summary,
         int? ReleaseYear,
-        string ImageUrl,
+        string? ImageUrl,
         int VoteCount,
         double? MicroRatio,
         double? MesoRatio,
@@ -484,8 +482,11 @@ public sealed class GameEndpointsTests
             { new StringContent("5.0"), "mesoScore" },
             { new StringContent("5.0"), "macroScore" }
         };
-        var png = new ByteArrayContent(Convert.FromBase64String(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
+        var pngContent = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+        pngContent[19] = 96;
+        pngContent[23] = 96;
+        var png = new ByteArrayContent(pngContent);
         png.Headers.ContentType = new("image/png");
         content.Add(png, "atlasIcon", "atlas-icon.png");
         var jpeg = new ByteArrayContent(
@@ -601,8 +602,7 @@ public sealed class GameEndpointsTests
                     SteamAppId INTEGER NOT NULL,
                     Name TEXT NULL,
                     Description TEXT NULL,
-                    ReleaseYear INTEGER NULL,
-                    IconUrl TEXT NULL
+                    ReleaseYear INTEGER NULL
                 );
 
                 CREATE TABLE GameAtlasIcons
@@ -645,15 +645,14 @@ public sealed class GameEndpointsTests
                     (2, 'Game Without Votes', 'Summary', 'image/png', X'00');
 
                 INSERT INTO SteamGames VALUES
-                    (1, 1234, NULL, NULL, NULL, NULL),
-                    (2, 5678, NULL, NULL, NULL, NULL),
+                    (1, 1234, NULL, NULL, NULL),
+                    (2, 5678, NULL, NULL, NULL),
                     (
                         3,
                         9010,
                         'Real Table Game',
                         'Store description',
-                        2024,
-                        'https://example.test/icon.jpg'
+                        2024
                     );
 
                 INSERT INTO GameVoteAggregates

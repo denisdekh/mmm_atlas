@@ -147,12 +147,12 @@ public static class VoteEndpoints
             return (null, "The cropped icon must be a valid PNG image.");
         }
 
-        if (width != height
-            || width is < 1 or > AtlasIcon.MaximumDiameterPixels)
+        if (width != AtlasIcon.MaximumDiameterPixels
+            || height != AtlasIcon.MaximumDiameterPixels)
         {
             return (
                 null,
-                $"The cropped icon must be square and no more than {AtlasIcon.MaximumDiameterPixels} pixels in diameter.");
+                $"The cropped icon must be {AtlasIcon.MaximumDiameterPixels} by {AtlasIcon.MaximumDiameterPixels} pixels.");
         }
 
         var libraryCardFile = form.Files.GetFile("libraryCard");

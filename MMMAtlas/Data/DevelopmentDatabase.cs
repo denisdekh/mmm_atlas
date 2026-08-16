@@ -146,11 +146,10 @@ public static class DevelopmentDatabase
             "ReleaseYear",
             "INTEGER NULL CHECK (ReleaseYear IS NULL OR ReleaseYear BETWEEN 1970 AND 2100)",
             cancellationToken);
-        await EnsureColumnAsync(
+        await DropColumnIfExistsAsync(
             connection,
             "SteamGames",
             "IconUrl",
-            "TEXT NULL",
             cancellationToken);
         await EnsureColumnAsync(
             connection,
@@ -222,6 +221,33 @@ public static class DevelopmentDatabase
         await using var alterCommand = connection.CreateCommand();
         alterCommand.CommandText =
             $"ALTER TABLE {table} ADD COLUMN {column} {definition};";
+        await alterCommand.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task DropColumnIfExistsAsync(
+        SqliteConnection connection,
+        string table,
+        string column,
+        CancellationToken cancellationToken)
+    {
+        await using var checkCommand = connection.CreateCommand();
+        checkCommand.CommandText = $"""
+            SELECT COUNT(*)
+            FROM pragma_table_info('{table}')
+            WHERE name = $column;
+            """;
+        checkCommand.Parameters.AddWithValue("$column", column);
+
+        var columnExists = Convert.ToInt64(
+            await checkCommand.ExecuteScalarAsync(cancellationToken)) > 0;
+        if (!columnExists)
+        {
+            return;
+        }
+
+        await using var alterCommand = connection.CreateCommand();
+        alterCommand.CommandText =
+            $"ALTER TABLE {table} DROP COLUMN {column};";
         await alterCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 }

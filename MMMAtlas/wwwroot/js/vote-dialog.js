@@ -3,7 +3,7 @@ import { updateCachedVote } from "./user-games-cache.js";
 const scoreNames = ["microScore", "mesoScore", "macroScore"];
 const cropCanvasSize = 300;
 const cropPreviewDiameter = 280;
-const savedIconDiameter = 200;
+const savedIconDiameter = 96;
 
 export function initializeVoteDialog() {
     const dialog = document.querySelector("[data-vote-dialog]");

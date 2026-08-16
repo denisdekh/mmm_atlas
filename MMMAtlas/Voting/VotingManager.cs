@@ -325,7 +325,7 @@ public sealed record VoteSubmissionResult(
 
 public sealed class AtlasIcon
 {
-    public const int MaximumDiameterPixels = 200;
+    public const int MaximumDiameterPixels = 96;
     public const int MaximumContentLength = 256 * 1024;
 
     public AtlasIcon(
@@ -342,11 +342,11 @@ public sealed class AtlasIcon
                 $"Atlas icons must be between 1 and {MaximumContentLength} bytes.");
         }
 
-        if (diameterPixels is < 1 or > MaximumDiameterPixels)
+        if (diameterPixels != MaximumDiameterPixels)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(diameterPixels),
-                $"Atlas icon diameter cannot exceed {MaximumDiameterPixels} pixels.");
+                $"Atlas icon diameter must be {MaximumDiameterPixels} pixels.");
         }
 
         ArgumentNullException.ThrowIfNull(libraryCard);

@@ -41,6 +41,7 @@ class AtlasController {
         this.root = root;
         this.canvas = canvas;
         this.context = canvas.getContext("2d", { alpha: true });
+        this.shell = root.querySelector("[data-atlas-shell]");
         this.stage = root.querySelector("[data-atlas-stage]");
         this.status = root.querySelector("[data-game-status]");
         this.count = root.querySelector("[data-game-count]");
@@ -50,6 +51,7 @@ class AtlasController {
         this.testCountInput = root.querySelector("[data-atlas-test-count]");
         this.testSeedInput = root.querySelector("[data-atlas-test-seed]");
         this.resultList = root.querySelector("[data-game-list]");
+        this.fullscreenButton = root.querySelector("[data-atlas-fullscreen]");
         this.tooltip = root.querySelector("[data-atlas-tooltip]");
         this.tooltipTitle = root.querySelector("[data-atlas-tooltip-title]");
         this.tooltipMeta = root.querySelector("[data-atlas-tooltip-meta]");
@@ -82,6 +84,7 @@ class AtlasController {
         this.testConfiguration = readTestConfiguration();
         this.testGeneration = 0;
         this.testCleanupTimer = 0;
+        this.fullscreenFallback = false;
         this.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
         this.palette = readPalette();
         this.iconCache = new IconCache(() => this.requestFrame());
@@ -99,6 +102,7 @@ class AtlasController {
 
     async start() {
         this.bindEvents();
+        this.syncFullscreenState();
         this.resizeObserver = new ResizeObserver(() => this.resize());
         this.resizeObserver.observe(this.stage);
         this.resize();
@@ -125,6 +129,11 @@ class AtlasController {
             ?.addEventListener("click", () => this.fitFilteredGames());
         this.root.querySelector("[data-atlas-refresh]")
             ?.addEventListener("click", () => this.refreshAll());
+        this.fullscreenButton
+            ?.addEventListener("click", () => this.toggleFullscreen());
+        document.addEventListener("fullscreenchange", () => {
+            this.syncFullscreenState();
+        });
         this.testControls?.addEventListener("submit", (event) => {
             event.preventDefault();
             this.configureTestPoints(
@@ -167,6 +176,48 @@ class AtlasController {
                 this.refreshOne(event.detail.gameId).catch(() => {});
             }
         });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && this.fullscreenFallback) {
+                this.fullscreenFallback = false;
+                this.syncFullscreenState();
+            }
+        });
+    }
+
+    async toggleFullscreen() {
+        const nativeFullscreen = document.fullscreenElement === this.shell;
+        if (nativeFullscreen) {
+            await document.exitFullscreen();
+            return;
+        }
+        if (this.fullscreenFallback) {
+            this.fullscreenFallback = false;
+            this.syncFullscreenState();
+            return;
+        }
+
+        if (this.shell?.requestFullscreen) {
+            try {
+                await this.shell.requestFullscreen();
+                return;
+            } catch {
+                // Use the in-page fallback when native fullscreen is unavailable.
+            }
+        }
+        this.fullscreenFallback = true;
+        this.syncFullscreenState();
+    }
+
+    syncFullscreenState() {
+        const active = document.fullscreenElement === this.shell
+            || this.fullscreenFallback;
+        this.shell.dataset.fullscreenActive = String(active);
+        this.shell.dataset.fullscreenFallback = String(this.fullscreenFallback);
+        document.body.classList.toggle("atlas-fullscreen-lock", active);
+        this.fullscreenButton.setAttribute("aria-pressed", String(active));
+        this.fullscreenButton.textContent = active ? "Exit full screen" : "Full screen";
+        this.setHoveredNode(null);
+        this.requestFrame();
     }
 
     async refreshAll({ initial = false, quiet = false } = {}) {
@@ -1308,7 +1359,6 @@ class AtlasController {
     }
 
     activateNode(node) {
-        this.selectedNode = node;
         if (!node.test) {
             this.resultButtons.get(node.id)?.click();
         }

@@ -183,7 +183,6 @@ public sealed class SteamAuthenticationManager(
                 steam.GameId,
                 steam.SteamAppId,
                 COALESCE(steam.Name, development.Name, 'Steam app ' || steam.SteamAppId),
-                steam.IconUrl,
                 library.PlaytimeForeverMinutes,
                 library.PlaytimeTwoWeeksMinutes,
                 library.LastPlayedAtUtc,
@@ -191,7 +190,8 @@ public sealed class SteamAuthenticationManager(
                 vote.MesoScore,
                 vote.MacroScore,
                 COALESCE(vote.IsPublic, 0),
-                CASE WHEN aggregate.GameId IS NULL THEN 1 ELSE 0 END
+                CASE WHEN aggregate.GameId IS NULL THEN 1 ELSE 0 END,
+                CASE WHEN atlas.GameId IS NULL THEN 0 ELSE 1 END
             FROM SteamLibraryGames AS library
             INNER JOIN SteamGames AS steam
                 ON steam.GameId = library.GameId
@@ -202,6 +202,8 @@ public sealed class SteamAuthenticationManager(
                 AND vote.GameId = library.GameId
             LEFT JOIN GameVoteAggregates AS aggregate
                 ON aggregate.GameId = library.GameId
+            LEFT JOIN GameAtlasIcons AS atlas
+                ON atlas.GameId = library.GameId
             WHERE library.UserId = $userId
             ORDER BY library.PlaytimeForeverMinutes DESC, steam.SteamAppId
             LIMIT 20;
@@ -217,13 +219,13 @@ public sealed class SteamAuthenticationManager(
                 gamesReader.GetInt64(0),
                 gamesReader.GetInt32(1),
                 gamesReader.GetString(2),
-                ReadNullableString(gamesReader, 3),
-                gamesReader.GetInt32(4),
-                gamesReader.IsDBNull(5) ? null : gamesReader.GetInt32(5),
-                ReadNullableDateTimeOffset(gamesReader, 6),
+                gamesReader.GetInt32(3),
+                gamesReader.IsDBNull(4) ? null : gamesReader.GetInt32(4),
+                ReadNullableDateTimeOffset(gamesReader, 5),
+                gamesReader.IsDBNull(6) ? null : gamesReader.GetDouble(6),
                 gamesReader.IsDBNull(7) ? null : gamesReader.GetDouble(7),
                 gamesReader.IsDBNull(8) ? null : gamesReader.GetDouble(8),
-                gamesReader.IsDBNull(9) ? null : gamesReader.GetDouble(9),
+                gamesReader.GetBoolean(9),
                 gamesReader.GetBoolean(10),
                 gamesReader.GetBoolean(11)));
         }
@@ -569,7 +571,6 @@ public sealed class SteamAuthenticationManager(
                 SET Name = COALESCE($name, Name),
                     Description = COALESCE(Description, $description),
                     ReleaseYear = COALESCE(ReleaseYear, $releaseYear),
-                    IconUrl = COALESCE($iconUrl, IconUrl),
                     UpdatedAtUtc = CURRENT_TIMESTAMP
                 WHERE GameId = $gameId;
                 """;
@@ -585,9 +586,6 @@ public sealed class SteamAuthenticationManager(
             updateCommand.Parameters.AddWithValue(
                 "$releaseYear",
                 (object?)storeGame?.ReleaseYear ?? DBNull.Value);
-            updateCommand.Parameters.AddWithValue(
-                "$iconUrl",
-                (object?)game.IconUrl ?? DBNull.Value);
             await updateCommand.ExecuteNonQueryAsync(cancellationToken);
 
             return Convert.ToInt64(existingGameId);
@@ -604,9 +602,9 @@ public sealed class SteamAuthenticationManager(
         await using var createSteamGameCommand = connection.CreateCommand();
         createSteamGameCommand.CommandText = """
             INSERT INTO SteamGames
-                (GameId, SteamAppId, Name, Description, ReleaseYear, IconUrl)
+                (GameId, SteamAppId, Name, Description, ReleaseYear)
             VALUES
-                ($gameId, $steamAppId, $name, $description, $releaseYear, $iconUrl);
+                ($gameId, $steamAppId, $name, $description, $releaseYear);
             """;
         createSteamGameCommand.Parameters.AddWithValue("$gameId", gameId);
         createSteamGameCommand.Parameters.AddWithValue("$steamAppId", game.AppId);
@@ -619,9 +617,6 @@ public sealed class SteamAuthenticationManager(
         createSteamGameCommand.Parameters.AddWithValue(
             "$releaseYear",
             (object?)storeGame?.ReleaseYear ?? DBNull.Value);
-        createSteamGameCommand.Parameters.AddWithValue(
-            "$iconUrl",
-            (object?)game.IconUrl ?? DBNull.Value);
         await createSteamGameCommand.ExecuteNonQueryAsync(cancellationToken);
 
         return gameId;
@@ -704,7 +699,6 @@ public sealed record SteamDashboardGame(
     long GameId,
     int SteamAppId,
     string Name,
-    string? IconUrl,
     int PlaytimeForeverMinutes,
     int? PlaytimeTwoWeeksMinutes,
     DateTimeOffset? LastPlayedAtUtc,
@@ -712,4 +706,5 @@ public sealed record SteamDashboardGame(
     double? MesoScore,
     double? MacroScore,
     bool IsPublic,
-    bool NeedsAtlasIcon);
+    bool NeedsAtlasIcon,
+    bool HasAtlasIcon);

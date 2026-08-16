@@ -50,7 +50,6 @@ public static class GameEndpoints
                         || '.'
                 ),
                 steam.ReleaseYear,
-                steam.IconUrl,
                 CASE WHEN atlas.ImageContent IS NULL THEN 0 ELSE 1 END,
                 CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
                 aggregate.VoteCount,
@@ -103,7 +102,6 @@ public static class GameEndpoints
                     info.Name,
                     'Steam app ' || steam.SteamAppId
                 ),
-                steam.IconUrl,
                 CASE WHEN atlas.ImageContent IS NULL THEN 0 ELSE 1 END,
                 CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
                 aggregate.VoteCount,
@@ -131,24 +129,20 @@ public static class GameEndpoints
         while (await reader.ReadAsync(cancellationToken))
         {
             var gameId = reader.GetInt64(0);
-            var storedImageUrl = reader.IsDBNull(2)
-                ? null
-                : reader.GetString(2);
-            var imageUrl = reader.GetBoolean(3)
+            var imageUrl = reader.GetBoolean(2)
                 ? $"{httpContext.Request.PathBase}/api/games/{gameId}/atlas-icon"
-                : storedImageUrl
-                    ?? (reader.GetBoolean(4)
-                        ? $"{httpContext.Request.PathBase}/api/games/{gameId}/image"
-                        : null);
+                : reader.GetBoolean(3)
+                    ? $"{httpContext.Request.PathBase}/api/games/{gameId}/image"
+                    : null;
 
             results.Add(new AtlasGameDto(
                 GameId: gameId,
                 Name: reader.GetString(1),
                 ImageUrl: imageUrl,
-                VoteCount: reader.GetInt32(5),
-                MicroRatio: reader.GetDouble(6),
-                MesoRatio: reader.GetDouble(7),
-                MacroRatio: reader.GetDouble(8)));
+                VoteCount: reader.GetInt32(4),
+                MicroRatio: reader.GetDouble(5),
+                MesoRatio: reader.GetDouble(6),
+                MacroRatio: reader.GetDouble(7)));
         }
 
         return Results.Ok(results);
@@ -180,7 +174,6 @@ public static class GameEndpoints
                         || '.'
                 ),
                 steam.ReleaseYear,
-                steam.IconUrl,
                 CASE WHEN atlas.ImageContent IS NULL THEN 0 ELSE 1 END,
                 CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
                 aggregate.VoteCount,
@@ -520,16 +513,13 @@ public static class GameEndpoints
         HttpRequest request)
     {
         var gameId = reader.GetInt64(0);
-        var storedImageUrl =
-            reader.IsDBNull(5) ? null : reader.GetString(5);
-        var hasAtlasIcon = reader.GetBoolean(6);
-        var hasDevelopmentImage = reader.GetBoolean(7);
+        var hasAtlasIcon = reader.GetBoolean(5);
+        var hasDevelopmentImage = reader.GetBoolean(6);
         var imageUrl = hasAtlasIcon
             ? $"{request.PathBase}/api/games/{gameId}/atlas-icon"
-            : storedImageUrl
-                ?? (hasDevelopmentImage
-                    ? $"{request.PathBase}/api/games/{gameId}/image"
-                    : null);
+            : hasDevelopmentImage
+                ? $"{request.PathBase}/api/games/{gameId}/image"
+                : null;
 
         return new GameDto(
             GameId: gameId,
@@ -538,10 +528,10 @@ public static class GameEndpoints
             Summary: reader.GetString(3),
             ReleaseYear: reader.IsDBNull(4) ? null : reader.GetInt32(4),
             ImageUrl: imageUrl,
-            VoteCount: reader.GetInt32(8),
-            MicroRatio: reader.GetDouble(9),
-            MesoRatio: reader.GetDouble(10),
-            MacroRatio: reader.GetDouble(11));
+            VoteCount: reader.GetInt32(7),
+            MicroRatio: reader.GetDouble(8),
+            MesoRatio: reader.GetDouble(9),
+            MacroRatio: reader.GetDouble(10));
     }
 
     private static double? ReadNullableDouble(

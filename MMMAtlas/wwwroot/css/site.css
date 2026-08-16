@@ -339,6 +339,10 @@ h2 {
     border: 0 !important;
 }
 
+.atlas-shell {
+    min-width: 0;
+}
+
 .atlas-toolbar {
     display: flex;
     align-items: end;
@@ -659,7 +663,149 @@ h2 {
     margin: 0;
     padding: 0 1rem 1rem;
     overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
     list-style: none;
+}
+
+body.atlas-fullscreen-lock {
+    overflow: hidden;
+}
+
+.atlas-shell[data-fullscreen-active="true"] {
+    box-sizing: border-box;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: max(0.5rem, env(safe-area-inset-top))
+        max(0.5rem, env(safe-area-inset-right))
+        max(0.5rem, env(safe-area-inset-bottom))
+        max(0.5rem, env(safe-area-inset-left));
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: var(--background);
+}
+
+.atlas-shell[data-fullscreen-fallback="true"] {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+}
+
+.atlas-shell[data-fullscreen-active="true"] .atlas-toolbar {
+    flex: none;
+    margin-top: 0;
+    padding: 0.65rem;
+    border-radius: 0.9rem 0.9rem 0 0;
+}
+
+.atlas-shell[data-fullscreen-active="true"] .atlas-test-controls,
+.atlas-shell[data-fullscreen-active="true"] .atlas-status-row,
+.atlas-shell[data-fullscreen-active="true"] .atlas-legend {
+    flex: none;
+}
+
+.atlas-shell[data-fullscreen-active="true"] .atlas-stage {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 auto;
+    border-radius: 0 0 0.9rem 0.9rem;
+}
+
+.atlas-shell[data-fullscreen-active="true"] .atlas-legend {
+    padding-block: 0.45rem;
+}
+
+.atlas-shell[data-fullscreen-active="true"] .atlas-results {
+    position: absolute;
+    z-index: 5;
+    right: max(0.5rem, env(safe-area-inset-right));
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+    left: max(0.5rem, env(safe-area-inset-left));
+    min-height: 0;
+    margin-top: 0;
+    overflow: hidden;
+    border-radius: 0.9rem;
+    box-shadow: 0 -1rem 2.5rem rgba(0, 0, 0, 0.28);
+}
+
+.atlas-shell[data-fullscreen-active="true"] .atlas-results[open] {
+    height: 50dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+.atlas-shell[data-fullscreen-active="true"] .atlas-results summary {
+    flex: none;
+    user-select: none;
+}
+
+.atlas-shell[data-fullscreen-active="true"] .atlas-result-list {
+    min-height: 0;
+    max-height: none;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+    scrollbar-gutter: stable;
+}
+
+@media (max-width: 800px) {
+    .atlas-shell[data-fullscreen-active="true"] .atlas-toolbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.45rem;
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-filters {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-filters label {
+        min-width: 0;
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-view-controls {
+        justify-content: flex-start;
+        flex-wrap: nowrap;
+        padding-bottom: 0.1rem;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-test-controls {
+        display: flex;
+        align-items: end;
+        padding: 0.5rem;
+        overflow-x: auto;
+        overscroll-behavior-inline: contain;
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-test-heading {
+        min-width: 9rem;
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-test-controls label {
+        min-width: 8rem;
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-test-controls button {
+        flex: none;
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-status-row {
+        min-height: 2.4rem;
+        padding: 0.35rem 0.5rem;
+    }
+
+    .atlas-shell[data-fullscreen-active="true"] .atlas-status-row .game-api-status,
+    .atlas-shell[data-fullscreen-active="true"] .atlas-status-row > span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 }
 
 .atlas-result[hidden] {

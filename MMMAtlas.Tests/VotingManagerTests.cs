@@ -53,7 +53,7 @@ public sealed class VotingManagerTests
             1,
             new VoteScores(8, 6, 2),
             CancellationToken.None,
-            new AtlasIcon([1], 200, CreateLibraryCard()));
+            new AtlasIcon([1], 96, CreateLibraryCard()));
 
         Assert.IsNotNull(created);
         Assert.IsFalse(created.Amended);
@@ -122,13 +122,13 @@ public sealed class VotingManagerTests
                 1,
                 new VoteScores(8, 6, 2),
                 CancellationToken.None,
-                new AtlasIcon([1], 200, CreateLibraryCard())),
+                new AtlasIcon([1], 96, CreateLibraryCard())),
             manager.SubmitAsync(
                 2,
                 1,
                 new VoteScores(1, 1, 8),
                 CancellationToken.None,
-                new AtlasIcon([2], 200, CreateLibraryCard())));
+                new AtlasIcon([2], 96, CreateLibraryCard())));
 
         var aggregate = ReadAggregate();
         Assert.AreEqual(2, aggregate.VoteCount);
@@ -156,13 +156,13 @@ public sealed class VotingManagerTests
             1,
             new VoteScores(5, 5, 5),
             CancellationToken.None,
-            new AtlasIcon([10, 20, 30], 200, CreateLibraryCard()));
+            new AtlasIcon([10, 20, 30], 96, CreateLibraryCard()));
         await manager.SubmitAsync(
             2,
             1,
             new VoteScores(4, 5, 6),
             CancellationToken.None,
-            new AtlasIcon([99], 100, CreateLibraryCard()));
+            new AtlasIcon([99], 96, CreateLibraryCard()));
 
         using var connection =
             new SqliteConnection($"Data Source={_databasePath}");
@@ -184,7 +184,7 @@ public sealed class VotingManagerTests
         CollectionAssert.AreEqual(
             new byte[] { 10, 20, 30 },
             (byte[])reader.GetValue(0));
-        Assert.AreEqual(200, reader.GetInt32(1));
+        Assert.AreEqual(96, reader.GetInt32(1));
         Assert.AreEqual("image/jpeg", reader.GetString(2));
         CollectionAssert.AreEqual(
             new byte[] { 40, 50, 60 },
@@ -192,6 +192,44 @@ public sealed class VotingManagerTests
         Assert.AreEqual(600, reader.GetInt32(4));
         Assert.AreEqual(900, reader.GetInt32(5));
         Assert.IsFalse(reader.Read());
+    }
+
+    [TestMethod]
+    public void AtlasIconsRequireTheStored96PixelSize()
+    {
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() =>
+            new AtlasIcon([1], 95, CreateLibraryCard()));
+    }
+
+    [TestMethod]
+    public async Task DevelopmentMigrationRemovesLegacyIconUrlColumn()
+    {
+        using (var connection =
+            new SqliteConnection($"Data Source={_databasePath}"))
+        {
+            connection.Open();
+            using var addCommand = connection.CreateCommand();
+            addCommand.CommandText =
+                "ALTER TABLE SteamGames ADD COLUMN IconUrl TEXT NULL;";
+            addCommand.ExecuteNonQuery();
+        }
+
+        await DevelopmentDatabase.InitializeAsync(
+            DatabaseConnection.Create(
+                $"Data Source={_databasePath};Foreign Keys=True",
+                Directory.GetCurrentDirectory()),
+            seedData: false);
+
+        using var verifyConnection =
+            new SqliteConnection($"Data Source={_databasePath}");
+        verifyConnection.Open();
+        using var verifyCommand = verifyConnection.CreateCommand();
+        verifyCommand.CommandText = """
+            SELECT COUNT(*)
+            FROM pragma_table_info('SteamGames')
+            WHERE name = 'IconUrl';
+            """;
+        Assert.AreEqual(0L, (long)verifyCommand.ExecuteScalar()!);
     }
 
     private static LibraryCard CreateLibraryCard() =>

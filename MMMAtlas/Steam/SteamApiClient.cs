@@ -103,7 +103,6 @@ public sealed class SteamApiClient(
                 new SteamOwnedGame(
                     game.AppId,
                     game.Name,
-                    BuildIconUrl(game.AppId, game.IconHash),
                     game.PlaytimeForever,
                     game.PlaytimeTwoWeeks,
                     FromUnixTime(game.LastPlayed))));
@@ -119,11 +118,6 @@ public sealed class SteamApiClient(
             return SteamLibraryResult.Unavailable();
         }
     }
-
-    private static string? BuildIconUrl(int appId, string? iconHash) =>
-        string.IsNullOrWhiteSpace(iconHash)
-            ? null
-            : $"https://media.steampowered.com/steamcommunity/public/images/apps/{appId}/{iconHash}.jpg";
 
     private static DateTimeOffset? FromUnixTime(long? seconds) =>
         seconds is > 0
@@ -148,7 +142,6 @@ public sealed class SteamApiClient(
     private sealed record OwnedGame(
         [property: JsonPropertyName("appid")] int AppId,
         [property: JsonPropertyName("name")] string? Name,
-        [property: JsonPropertyName("img_icon_url")] string? IconHash,
         [property: JsonPropertyName("playtime_forever")] int PlaytimeForever,
         [property: JsonPropertyName("playtime_2weeks")] int? PlaytimeTwoWeeks,
         [property: JsonPropertyName("rtime_last_played")] long? LastPlayed);
@@ -162,7 +155,6 @@ public sealed record SteamProfile(
 public sealed record SteamOwnedGame(
     int AppId,
     string? Name,
-    string? IconUrl,
     int PlaytimeForeverMinutes,
     int? PlaytimeTwoWeeksMinutes,
     DateTimeOffset? LastPlayedAtUtc);
