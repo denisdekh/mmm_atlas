@@ -1,0 +1,35 @@
+<Project>
+  <PropertyGroup>
+    <Configurations>Development;Test;Production</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Development' Or '$(Configuration)' == 'Debug'">
+    <AtlasBuildMode>Development</AtlasBuildMode>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <Optimize>false</Optimize>
+    <DefineConstants>$(DefineConstants);ATLAS_BUILD_DEVELOPMENT</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Test'">
+    <AtlasBuildMode>Test</AtlasBuildMode>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <DefineConstants>$(DefineConstants);ATLAS_BUILD_TEST</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Production' Or '$(Configuration)' == 'Release'">
+    <AtlasBuildMode>Production</AtlasBuildMode>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <DefineConstants>$(DefineConstants);ATLAS_BUILD_PRODUCTION</DefineConstants>
+  </PropertyGroup>
+
+  <Target Name="ValidateAtlasBuildMode" BeforeTargets="PrepareForBuild">
+    <Error
+      Condition="'$(AtlasBuildMode)' == ''"
+      Text="Unsupported configuration '$(Configuration)'. Use Development, Test, or Production." />
+  </Target>
+</Project>

@@ -50,6 +50,22 @@ public static class GameEndpoints
                         || '.'
                 ),
                 steam.ReleaseYear,
+                steam.IsFree,
+                (
+                    SELECT group_concat(developer.DeveloperName, char(31))
+                    FROM SteamGameDevelopers AS developer
+                    WHERE developer.GameId = steam.GameId
+                ),
+                (
+                    SELECT group_concat(publisher.PublisherName, char(31))
+                    FROM SteamGamePublishers AS publisher
+                    WHERE publisher.GameId = steam.GameId
+                ),
+                (
+                    SELECT group_concat(genre.GenreName, char(31))
+                    FROM SteamGameGenres AS genre
+                    WHERE genre.GameId = steam.GameId
+                ),
                 CASE WHEN atlas.ImageContent IS NULL THEN 0 ELSE 1 END,
                 CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
                 aggregate.VoteCount,
@@ -102,6 +118,23 @@ public static class GameEndpoints
                     info.Name,
                     'Steam app ' || steam.SteamAppId
                 ),
+                steam.ReleaseYear,
+                steam.IsFree,
+                (
+                    SELECT group_concat(developer.DeveloperName, char(31))
+                    FROM SteamGameDevelopers AS developer
+                    WHERE developer.GameId = steam.GameId
+                ),
+                (
+                    SELECT group_concat(publisher.PublisherName, char(31))
+                    FROM SteamGamePublishers AS publisher
+                    WHERE publisher.GameId = steam.GameId
+                ),
+                (
+                    SELECT group_concat(genre.GenreName, char(31))
+                    FROM SteamGameGenres AS genre
+                    WHERE genre.GameId = steam.GameId
+                ),
                 CASE WHEN atlas.ImageContent IS NULL THEN 0 ELSE 1 END,
                 CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
                 aggregate.VoteCount,
@@ -129,20 +162,25 @@ public static class GameEndpoints
         while (await reader.ReadAsync(cancellationToken))
         {
             var gameId = reader.GetInt64(0);
-            var imageUrl = reader.GetBoolean(2)
+            var imageUrl = reader.GetBoolean(7)
                 ? $"{httpContext.Request.PathBase}/api/games/{gameId}/atlas-icon"
-                : reader.GetBoolean(3)
+                : reader.GetBoolean(8)
                     ? $"{httpContext.Request.PathBase}/api/games/{gameId}/image"
                     : null;
 
             results.Add(new AtlasGameDto(
                 GameId: gameId,
                 Name: reader.GetString(1),
+                ReleaseYear: reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                IsFree: reader.IsDBNull(3) ? null : reader.GetBoolean(3),
+                Developers: ReadNames(reader, 4),
+                Publishers: ReadNames(reader, 5),
+                Genres: ReadNames(reader, 6),
                 ImageUrl: imageUrl,
-                VoteCount: reader.GetInt32(4),
-                MicroRatio: reader.GetDouble(5),
-                MesoRatio: reader.GetDouble(6),
-                MacroRatio: reader.GetDouble(7)));
+                VoteCount: reader.GetInt32(9),
+                MicroRatio: reader.GetDouble(10),
+                MesoRatio: reader.GetDouble(11),
+                MacroRatio: reader.GetDouble(12)));
         }
 
         return Results.Ok(results);
@@ -174,6 +212,22 @@ public static class GameEndpoints
                         || '.'
                 ),
                 steam.ReleaseYear,
+                steam.IsFree,
+                (
+                    SELECT group_concat(developer.DeveloperName, char(31))
+                    FROM SteamGameDevelopers AS developer
+                    WHERE developer.GameId = steam.GameId
+                ),
+                (
+                    SELECT group_concat(publisher.PublisherName, char(31))
+                    FROM SteamGamePublishers AS publisher
+                    WHERE publisher.GameId = steam.GameId
+                ),
+                (
+                    SELECT group_concat(genre.GenreName, char(31))
+                    FROM SteamGameGenres AS genre
+                    WHERE genre.GameId = steam.GameId
+                ),
                 CASE WHEN atlas.ImageContent IS NULL THEN 0 ELSE 1 END,
                 CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
                 aggregate.VoteCount,
@@ -513,8 +567,8 @@ public static class GameEndpoints
         HttpRequest request)
     {
         var gameId = reader.GetInt64(0);
-        var hasAtlasIcon = reader.GetBoolean(5);
-        var hasDevelopmentImage = reader.GetBoolean(6);
+        var hasAtlasIcon = reader.GetBoolean(9);
+        var hasDevelopmentImage = reader.GetBoolean(10);
         var imageUrl = hasAtlasIcon
             ? $"{request.PathBase}/api/games/{gameId}/atlas-icon"
             : hasDevelopmentImage
@@ -527,12 +581,26 @@ public static class GameEndpoints
             Name: reader.GetString(2),
             Summary: reader.GetString(3),
             ReleaseYear: reader.IsDBNull(4) ? null : reader.GetInt32(4),
+            IsFree: reader.IsDBNull(5) ? null : reader.GetBoolean(5),
+            Developers: ReadNames(reader, 6),
+            Publishers: ReadNames(reader, 7),
+            Genres: ReadNames(reader, 8),
             ImageUrl: imageUrl,
-            VoteCount: reader.GetInt32(7),
-            MicroRatio: reader.GetDouble(8),
-            MesoRatio: reader.GetDouble(9),
-            MacroRatio: reader.GetDouble(10));
+            VoteCount: reader.GetInt32(11),
+            MicroRatio: reader.GetDouble(12),
+            MesoRatio: reader.GetDouble(13),
+            MacroRatio: reader.GetDouble(14));
     }
+
+    private static IReadOnlyList<string> ReadNames(
+        SqliteDataReader reader,
+        int ordinal) =>
+        reader.IsDBNull(ordinal)
+            ? []
+            : reader.GetString(ordinal).Split(
+                (char)31,
+                StringSplitOptions.RemoveEmptyEntries
+                    | StringSplitOptions.TrimEntries);
 
     private static double? ReadNullableDouble(
         SqliteDataReader reader,
@@ -545,6 +613,10 @@ public static class GameEndpoints
         string Name,
         string Summary,
         int? ReleaseYear,
+        bool? IsFree,
+        IReadOnlyList<string> Developers,
+        IReadOnlyList<string> Publishers,
+        IReadOnlyList<string> Genres,
         string? ImageUrl,
         int VoteCount,
         double? MicroRatio,
@@ -554,6 +626,11 @@ public static class GameEndpoints
     private sealed record AtlasGameDto(
         long GameId,
         string Name,
+        int? ReleaseYear,
+        bool? IsFree,
+        IReadOnlyList<string> Developers,
+        IReadOnlyList<string> Publishers,
+        IReadOnlyList<string> Genres,
         string? ImageUrl,
         int VoteCount,
         double MicroRatio,

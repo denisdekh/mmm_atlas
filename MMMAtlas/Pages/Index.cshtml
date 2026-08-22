@@ -8,17 +8,13 @@
     <div class="hero-copy">
         <p class="eyebrow">A community map of how games play</p>
         <h1>Every game has a different strategic shape.</h1>
-        <p class="hero-summary">
-            Rate games across Micro, Meso, and Macro. Community votes turn those
-            perspectives into a living atlas.
-        </p>
-        <p>
-            <a asp-page="/Login">Sign in through Steam</a>
-        </p>
-        <a class="primary-action" href="#atlas">
-            Explore the axes
-            <span aria-hidden="true">↓</span>
-        </a>
+        <iframe
+            class="hero-video"
+            src="https://www.youtube.com/embed/NgHvdCcmQ4o?si=bxRATieshzO2Gjqo"
+            title="YouTube video player"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen></iframe>
     </div>
 
     <div class="axis-orbit" aria-hidden="true">
@@ -29,160 +25,46 @@
     </div>
 </section>
 
-<section class="axis-explorer" id="atlas" data-axis-preview data-active-axis="micro">
+<section class="axis-explorer" id="atlas">
     <div class="section-heading">
         <p class="eyebrow">The three axes</p>
-        <h2>Choose an axis to preview the model.</h2>
+        <h2>The three dimensions of comptetitive play.</h2>
     </div>
 
-    <div class="axis-grid" role="group" aria-label="MMM axis preview">
-        <button class="axis-card axis-micro" type="button" data-axis="micro" aria-pressed="true">
+    <div class="axis-grid">
+        <article class="axis-card axis-micro">
             <span class="axis-index">01</span>
+            <img class="axis-icon axis-card-icon" src="~/images/axis-micro.svg" alt="" aria-hidden="true" />
             <strong>Micro</strong>
-            <span>Immediate control, execution, and moment-to-moment decisions.</span>
-        </button>
-        <button class="axis-card axis-meso" type="button" data-axis="meso" aria-pressed="false">
+            <span>Requires mechanical skill, fast reactions, and quick inputs</span>
+        </article>
+        <article class="axis-card axis-meso">
             <span class="axis-index">02</span>
+            <img class="axis-icon axis-card-icon" src="~/images/axis-meso.svg" alt="" aria-hidden="true" />
             <strong>Meso</strong>
-            <span>Coordination, positioning, and medium-horizon planning.</span>
-        </button>
-        <button class="axis-card axis-macro" type="button" data-axis="macro" aria-pressed="false">
+            <span>Requires guessing your opponents, learning their habits, and acting under rng</span>
+        </article>
+        <article class="axis-card axis-macro">
             <span class="axis-index">03</span>
+            <img class="axis-icon axis-card-icon" src="~/images/chess.svg" alt="" aria-hidden="true" />
             <strong>Macro</strong>
-            <span>Economy, long-term strategy, and decisions that shape the whole match.</span>
-        </button>
+            <span>Requires calculating, strategizing, and long term planning</span>
+        </article>
     </div>
-
-    <p class="axis-status" aria-live="polite">
-        Previewing <strong data-axis-label>Micro</strong>.
-    </p>
 </section>
 
-<section class="game-api-demo" id="games" data-game-api>
-    <div class="section-heading game-api-heading">
-        <div>
-            <p class="eyebrow">The living atlas</p>
-            <h2>Explore how games play.</h2>
-        </div>
-        <p class="game-api-intro">
-            Every point is anchored to its community Micro, Meso, and Macro
-            ratios. Zoom in to reveal game icons and their local neighborhoods.
-        </p>
-    </div>
-
-    <div class="atlas-shell" data-atlas-shell>
-        <div class="atlas-toolbar" aria-label="Atlas filters and view controls">
-        <div class="atlas-filters">
-            <label>
-                <span>Find a game</span>
-                <input
-                    type="search"
-                    placeholder="Search rated games"
-                    autocomplete="off"
-                    data-atlas-search />
-            </label>
-            <label>
-                <span>Strategic shape</span>
-                <select data-atlas-category>
-                    <option value="all">All distributions</option>
-                    <option value="micro">Micro leaning</option>
-                    <option value="meso">Meso leaning</option>
-                    <option value="macro">Macro leaning</option>
-                    <option value="mixed">Mixed or balanced</option>
-                </select>
-            </label>
-        </div>
-
-        <div class="atlas-view-controls" aria-label="Atlas view">
-            <button type="button" data-atlas-zoom-out aria-label="Zoom out">−</button>
-            <button type="button" data-atlas-zoom-in aria-label="Zoom in">+</button>
-            <button type="button" data-atlas-fit>Fit results</button>
-            <button type="button" data-atlas-reset>Reset</button>
-            <button type="button" data-atlas-refresh>Refresh</button>
-            <button
-                type="button"
-                data-atlas-fullscreen
-                aria-pressed="false">Full screen</button>
-        </div>
-        </div>
-
-        <form class="atlas-test-controls" data-atlas-test-controls hidden>
-        <div class="atlas-test-heading">
-            <strong>Canvas test points</strong>
-            <span>Enabled by the Canvas test launch profile or URL parameters.</span>
-        </div>
-        <label>
-            <span>Point count</span>
-            <input
-                type="number"
-                min="0"
-                max="20000"
-                step="100"
-                inputmode="numeric"
-                data-atlas-test-count />
-        </label>
-        <label>
-            <span>Random seed</span>
-            <input type="text" maxlength="80" data-atlas-test-seed />
-        </label>
-        <button type="submit">Apply points</button>
-        <button type="button" data-atlas-test-clear>Clear</button>
-        </form>
-
-        <div class="atlas-status-row">
-        <p class="game-api-status" data-game-status role="status" data-state="loading">
-            Loading the community atlas&hellip;
-        </p>
-        <span data-game-count>Waiting for API</span>
-        </div>
-
-        <p class="visually-hidden" id="atlas-description">
-        An interactive ternary map. Games near the top emphasize Micro, games
-        toward the lower left emphasize Meso, and games toward the lower right
-        emphasize Macro. Use arrow keys to move between visible games, Enter to
-        open one, plus and minus to zoom, and Home to reset the view.
-        </p>
-
-        <div class="atlas-stage" data-atlas-stage>
-        <canvas
-            data-atlas-canvas
-            tabindex="0"
-            role="img"
-            aria-label="Interactive map of community-rated games"
-            aria-describedby="atlas-description">
-            The game atlas requires Canvas support. Use the accessible game list
-            following the diagram instead.
-        </canvas>
-
-        <div class="atlas-tooltip" data-atlas-tooltip role="status" hidden>
-            <strong data-atlas-tooltip-title></strong>
-            <span data-atlas-tooltip-meta></span>
-            <span data-atlas-tooltip-ratios></span>
-        </div>
-
-        <div class="atlas-stage-help" aria-hidden="true">
-            <span>Drag to pan</span>
-            <span>Scroll or pinch to zoom</span>
-            <span>Points reveal icons as you move closer</span>
-        </div>
-        </div>
-
-        <div class="atlas-legend" aria-label="Atlas color legend">
-        <span><i class="atlas-swatch atlas-swatch-micro"></i>Micro</span>
-        <span><i class="atlas-swatch atlas-swatch-meso"></i>Meso</span>
-        <span><i class="atlas-swatch atlas-swatch-macro"></i>Macro</span>
-        <span><i class="atlas-swatch atlas-swatch-mixed"></i>Mixed</span>
-        </div>
-
-        <details class="atlas-results">
-            <summary>Browse the filtered games as a list</summary>
-            <ul class="atlas-result-list" data-game-list></ul>
-        </details>
-    </div>
-
-    <noscript>
-        <p class="game-api-error">JavaScript is required to render the interactive atlas.</p>
-    </noscript>
+<section class="game-api-demo atlas-launch" id="games">
+    <a class="atlas-launch-action" asp-page="/Atlas">
+        <span>
+            <span class="eyebrow">The living atlas</span>
+            <strong>Explore the full game atlas.</strong>
+            <span>
+                Pan, zoom, filter, and inspect how community-rated games are
+                distributed across Micro, Meso, and Macro.
+            </span>
+        </span>
+        <span class="atlas-launch-arrow" aria-hidden="true">→</span>
+    </a>
 </section>
 
 <section class="about" id="about">

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MMMAtlas.Configuration;
 using MMMAtlas.Data;
 using MMMAtlas.Steam;
 
@@ -21,6 +23,84 @@ namespace MMMAtlas.Tests;
 [TestClass]
 public sealed class GameEndpointsTests
 {
+    [TestMethod]
+    public async Task LoginDefersSteamDataPermissionUntilAfterSignIn()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync("/login");
+
+        StringAssert.Contains(
+            html,
+            "will not collect your Steam");
+        StringAssert.Contains(
+            html,
+            "unless and until you grant");
+        StringAssert.Contains(html, "opt in from your");
+        Assert.IsFalse(html.Contains(
+            "CollectSteamData",
+            StringComparison.Ordinal));
+        Assert.IsFalse(HasEnabledCheckbox(html));
+    }
+
+    [TestMethod]
+    public async Task DashboardUsesAnOptInButtonWhenCollectionIsDisabled()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "20");
+
+        var html = await client.GetStringAsync("/dashboard");
+
+        StringAssert.Contains(html, "Allow data collection");
+        Assert.IsFalse(HasEnabledCheckbox(html));
+        Assert.IsFalse(html.Contains(
+            "data-steam-opt-out-dialog",
+            StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task DashboardOptOutWarnsThatGameDataButNotVotesWillBeDeleted()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        var html = await client.GetStringAsync("/dashboard");
+
+        StringAssert.Contains(html, "Stop data collection");
+        StringAssert.Contains(html, "game library");
+        StringAssert.Contains(html, "playtime data");
+        StringAssert.Contains(
+            html,
+            "Your submitted votes will not be deleted.");
+        StringAssert.Contains(html, "data-steam-opt-out-dialog");
+        Assert.IsFalse(HasEnabledCheckbox(html));
+    }
+
+    [TestMethod]
+    public async Task HomePageOnlyExposesTestFeaturesWhenBuildAllowsThem()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var html = await client.GetStringAsync(
+            "/?atlasTest=1&atlasTestPoints=3000");
+        var expectedValue = AtlasBuildPolicy.Current.TestFeaturesEnabled
+            .ToString()
+            .ToLowerInvariant();
+
+        StringAssert.Contains(
+            html,
+            $"data-test-features-enabled=\"{expectedValue}\"");
+        Assert.AreEqual(
+            AtlasBuildPolicy.Current.TestFeaturesEnabled,
+            html.Contains(
+                "data-atlas-test-controls",
+                StringComparison.Ordinal));
+    }
+
     [TestMethod]
     public async Task GetVotesOnlyIdentifiesPublicVoters()
     {
@@ -150,6 +230,10 @@ public sealed class GameEndpointsTests
         Assert.AreEqual("Test Game", game.Name);
         Assert.AreEqual("Summary", game.Summary);
         Assert.IsNull(game.ReleaseYear);
+        Assert.IsNull(game.IsFree);
+        Assert.IsEmpty(game.Developers);
+        Assert.IsEmpty(game.Publishers);
+        Assert.IsEmpty(game.Genres);
         Assert.AreEqual("/api/games/1/image", game.ImageUrl);
         Assert.AreEqual(2, game.VoteCount);
         Assert.AreEqual(0.375, game.MicroRatio!.Value, 0.000001);
@@ -193,6 +277,16 @@ public sealed class GameEndpointsTests
             "Store description",
             game.Summary);
         Assert.AreEqual(2024, game.ReleaseYear);
+        Assert.IsFalse(game.IsFree.GetValueOrDefault(true));
+        CollectionAssert.AreEqual(
+            new[] { "Atlas Studio" },
+            game.Developers.ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "Atlas Publishing" },
+            game.Publishers.ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "Strategy" },
+            game.Genres.ToArray());
         Assert.IsNull(game.ImageUrl);
         Assert.AreEqual(1, game.VoteCount);
         Assert.AreEqual(0.2, game.MicroRatio);
@@ -220,6 +314,17 @@ public sealed class GameEndpointsTests
 
         var game = games.Single(candidate => candidate.GameId == 3);
         Assert.AreEqual("Real Table Game", game.Name);
+        Assert.AreEqual(2024, game.ReleaseYear);
+        Assert.IsFalse(game.IsFree.GetValueOrDefault(true));
+        CollectionAssert.AreEqual(
+            new[] { "Atlas Studio" },
+            game.Developers.ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "Atlas Publishing" },
+            game.Publishers.ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "Strategy" },
+            game.Genres.ToArray());
         Assert.IsNull(game.ImageUrl);
         Assert.AreEqual(1, game.VoteCount);
         Assert.AreEqual(0.2, game.MicroRatio, 0.000001);
@@ -459,6 +564,10 @@ public sealed class GameEndpointsTests
         string Name,
         string Summary,
         int? ReleaseYear,
+        bool? IsFree,
+        IReadOnlyList<string> Developers,
+        IReadOnlyList<string> Publishers,
+        IReadOnlyList<string> Genres,
         string? ImageUrl,
         int VoteCount,
         double? MicroRatio,
@@ -468,6 +577,11 @@ public sealed class GameEndpointsTests
     private sealed record AtlasGameResponse(
         long GameId,
         string Name,
+        int? ReleaseYear,
+        bool? IsFree,
+        IReadOnlyList<string> Developers,
+        IReadOnlyList<string> Publishers,
+        IReadOnlyList<string> Genres,
         string? ImageUrl,
         int VoteCount,
         double MicroRatio,
@@ -505,6 +619,12 @@ public sealed class GameEndpointsTests
         content.Add(jpeg, "libraryCard", "library-card.jpg");
         return content;
     }
+
+    private static bool HasEnabledCheckbox(string html) =>
+        Regex.IsMatch(
+            html,
+            "<input(?=[^>]*type=\"checkbox\")(?=[^>]*name=\"enabled\")[^>]*>",
+            RegexOptions.IgnoreCase);
 
     private sealed class AtlasApplicationFactory :
         WebApplicationFactory<Program>
@@ -593,7 +713,15 @@ public sealed class GameEndpointsTests
                 (
                     UserId INTEGER PRIMARY KEY,
                     SteamId INTEGER NOT NULL UNIQUE,
-                    PersonaName TEXT NULL
+                    DataCollectionEnabled INTEGER NOT NULL DEFAULT 0,
+                    PersonaName TEXT NULL,
+                    ProfileUrl TEXT NULL,
+                    AvatarUrl TEXT NULL,
+                    ProfileFetchedAtUtc TEXT NULL,
+                    LibraryCheckStatus TEXT NOT NULL DEFAULT 'NeverChecked',
+                    LibraryCheckedAtUtc TEXT NULL,
+                    LibrarySyncedAtUtc TEXT NULL,
+                    UpdatedAtUtc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
 
                 CREATE TABLE SteamGames
@@ -602,7 +730,30 @@ public sealed class GameEndpointsTests
                     SteamAppId INTEGER NOT NULL,
                     Name TEXT NULL,
                     Description TEXT NULL,
-                    ReleaseYear INTEGER NULL
+                    ReleaseYear INTEGER NULL,
+                    IsFree INTEGER NULL,
+                    StoreMetadataFetchedAtUtc TEXT NULL
+                );
+
+                CREATE TABLE SteamGameDevelopers
+                (
+                    GameId INTEGER NOT NULL,
+                    DeveloperName TEXT NOT NULL,
+                    PRIMARY KEY (GameId, DeveloperName)
+                );
+
+                CREATE TABLE SteamGamePublishers
+                (
+                    GameId INTEGER NOT NULL,
+                    PublisherName TEXT NOT NULL,
+                    PRIMARY KEY (GameId, PublisherName)
+                );
+
+                CREATE TABLE SteamGameGenres
+                (
+                    GameId INTEGER NOT NULL,
+                    GenreName TEXT NOT NULL,
+                    PRIMARY KEY (GameId, GenreName)
                 );
 
                 CREATE TABLE GameAtlasIcons
@@ -644,16 +795,37 @@ public sealed class GameEndpointsTests
                     (1, 'Test Game', 'Summary', 'image/png', X'00'),
                     (2, 'Game Without Votes', 'Summary', 'image/png', X'00');
 
-                INSERT INTO SteamGames VALUES
-                    (1, 1234, NULL, NULL, NULL),
-                    (2, 5678, NULL, NULL, NULL),
+                INSERT INTO SteamGames
+                    (
+                        GameId,
+                        SteamAppId,
+                        Name,
+                        Description,
+                        ReleaseYear,
+                        IsFree,
+                        StoreMetadataFetchedAtUtc
+                    )
+                VALUES
+                    (1, 1234, NULL, NULL, NULL, NULL, NULL),
+                    (2, 5678, NULL, NULL, NULL, NULL, NULL),
                     (
                         3,
                         9010,
                         'Real Table Game',
                         'Store description',
-                        2024
+                        2024,
+                        0,
+                        CURRENT_TIMESTAMP
                     );
+
+                INSERT INTO SteamGameDevelopers VALUES
+                    (3, 'Atlas Studio');
+
+                INSERT INTO SteamGamePublishers VALUES
+                    (3, 'Atlas Publishing');
+
+                INSERT INTO SteamGameGenres VALUES
+                    (3, 'Strategy');
 
                 INSERT INTO GameVoteAggregates
                 VALUES
@@ -664,9 +836,11 @@ public sealed class GameEndpointsTests
                     (10, 1),
                     (20, 0);
 
-                INSERT INTO SteamAccounts VALUES
-                    (10, 81985529216486895, 'Atlas Tester'),
-                    (20, 1147797409030816545, 'Private Tester');
+                INSERT INTO SteamAccounts
+                    (UserId, SteamId, DataCollectionEnabled, PersonaName)
+                VALUES
+                    (10, 81985529216486895, 1, 'Atlas Tester'),
+                    (20, 1147797409030816545, 0, 'Private Tester');
 
                 INSERT INTO Votes VALUES
                     (10, 1, 8, 6, 2, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
@@ -715,18 +889,24 @@ public sealed class GameEndpointsTests
     private sealed class TestAntiforgery : IAntiforgery
     {
         public AntiforgeryTokenSet GetAndStoreTokens(HttpContext httpContext) =>
-            throw new NotSupportedException();
+            TestTokens;
 
         public AntiforgeryTokenSet GetTokens(HttpContext httpContext) =>
-            throw new NotSupportedException();
+            TestTokens;
 
         public Task<bool> IsRequestValidAsync(HttpContext httpContext) =>
             Task.FromResult(true);
 
         public void SetCookieTokenAndHeader(HttpContext httpContext) =>
-            throw new NotSupportedException();
+            _ = httpContext;
 
         public Task ValidateRequestAsync(HttpContext httpContext) =>
             Task.CompletedTask;
+
+        private static readonly AntiforgeryTokenSet TestTokens = new(
+            "test-request-token",
+            "test-cookie-token",
+            "__RequestVerificationToken",
+            "X-CSRF-TOKEN");
     }
 }

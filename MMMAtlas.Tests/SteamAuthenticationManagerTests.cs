@@ -10,6 +10,7 @@ namespace MMMAtlas.Tests;
 public sealed class SteamAuthenticationManagerTests
 {
     private string _databasePath = null!;
+    private SteamApiMessageHandler _apiHandler = null!;
     private TestSteamStoreClient _storeClient = null!;
 
     [TestInitialize]
@@ -41,13 +42,12 @@ public sealed class SteamAuthenticationManagerTests
     }
 
     [TestMethod]
-    public async Task ErasureRequiresExplicitOptInBeforeDataIsCollectedAgain()
+    public async Task SignInDoesNotCollectUntilExplicitOptInAndErasurePreservesVotes()
     {
         var manager = CreateManager();
 
         var firstSignIn = await manager.CompleteSignInAsync(
             76561198012345678,
-            collectionConsent: true,
             CancellationToken.None);
 
         var dashboard = await manager.GetDashboardAsync(
@@ -55,17 +55,43 @@ public sealed class SteamAuthenticationManagerTests
             CancellationToken.None);
 
         Assert.IsNotNull(dashboard);
-        Assert.IsTrue(dashboard.DataCollectionEnabled);
-        Assert.AreEqual("Atlas Tester", dashboard.PersonaName);
-        Assert.HasCount(2, dashboard.MostPlayedGames);
-        Assert.AreEqual("Long Game", dashboard.MostPlayedGames[0].Name);
+        Assert.IsFalse(dashboard.DataCollectionEnabled);
+        Assert.IsNull(dashboard.PersonaName);
+        Assert.IsEmpty(dashboard.MostPlayedGames);
+        Assert.AreEqual(0, _apiHandler.RequestCount);
+        Assert.AreEqual(0, _storeClient.RequestCount);
+
+        await manager.SetDataCollectionEnabledAsync(
+            firstSignIn.UserId,
+            enabled: true,
+            CancellationToken.None);
+
+        var optedIn = await manager.GetDashboardAsync(
+            firstSignIn.UserId,
+            CancellationToken.None);
+
+        Assert.IsNotNull(optedIn);
+        Assert.IsTrue(optedIn.DataCollectionEnabled);
+        Assert.AreEqual("Atlas Tester", optedIn.PersonaName);
+        Assert.HasCount(2, optedIn.MostPlayedGames);
+        Assert.AreEqual("Long Game", optedIn.MostPlayedGames[0].Name);
         Assert.AreEqual(
             9000,
-            dashboard.MostPlayedGames[0].PlaytimeForeverMinutes);
+            optedIn.MostPlayedGames[0].PlaytimeForeverMinutes);
+        Assert.AreEqual(2, _apiHandler.RequestCount);
         Assert.AreEqual(2, _storeClient.RequestCount);
         Assert.AreEqual(
-            ("Long Game description", 2011),
+            ("Long Game description", 2011, false),
             ReadStoreMetadata(10));
+        CollectionAssert.AreEqual(
+            new[] { "Atlas Developer" },
+            ReadStoreLabels("SteamGameDevelopers", "DeveloperName", 10));
+        CollectionAssert.AreEqual(
+            new[] { "Atlas Publisher" },
+            ReadStoreLabels("SteamGamePublishers", "PublisherName", 10));
+        CollectionAssert.AreEqual(
+            new[] { "Strategy" },
+            ReadStoreLabels("SteamGameGenres", "GenreName", 10));
 
         AddVote(firstSignIn.UserId);
 
@@ -78,8 +104,9 @@ public sealed class SteamAuthenticationManagerTests
         Assert.AreEqual(2d, votedDashboard.MostPlayedGames[0].MacroScore);
         Assert.IsFalse(votedDashboard.MostPlayedGames[0].IsPublic);
 
-        await manager.EraseStoredDataAsync(
+        await manager.SetDataCollectionEnabledAsync(
             firstSignIn.UserId,
+            enabled: false,
             CancellationToken.None);
 
         var erased = await manager.GetDashboardAsync(
@@ -94,7 +121,6 @@ public sealed class SteamAuthenticationManagerTests
 
         await manager.CompleteSignInAsync(
             76561198012345678,
-            collectionConsent: false,
             CancellationToken.None);
 
         var stillDisabled = await manager.GetDashboardAsync(
@@ -103,10 +129,11 @@ public sealed class SteamAuthenticationManagerTests
         Assert.IsNotNull(stillDisabled);
         Assert.IsFalse(stillDisabled.DataCollectionEnabled);
         Assert.IsNull(stillDisabled.PersonaName);
+        Assert.AreEqual(2, _apiHandler.RequestCount);
 
-        await manager.CompleteSignInAsync(
-            76561198012345678,
-            collectionConsent: true,
+        await manager.SetDataCollectionEnabledAsync(
+            firstSignIn.UserId,
+            enabled: true,
             CancellationToken.None);
 
         var optedBackIn = await manager.GetDashboardAsync(
@@ -116,6 +143,7 @@ public sealed class SteamAuthenticationManagerTests
         Assert.IsTrue(optedBackIn.DataCollectionEnabled);
         Assert.AreEqual("Atlas Tester", optedBackIn.PersonaName);
         Assert.HasCount(2, optedBackIn.MostPlayedGames);
+        Assert.AreEqual(4, _apiHandler.RequestCount);
         Assert.AreEqual(2, _storeClient.RequestCount);
 
         using var connection =
@@ -159,7 +187,8 @@ public sealed class SteamAuthenticationManagerTests
         return (long)command.ExecuteScalar()!;
     }
 
-    private (string? Description, int? ReleaseYear) ReadStoreMetadata(
+    private (string? Description, int? ReleaseYear, bool? IsFree)
+        ReadStoreMetadata(
         int appId)
     {
         using var connection =
@@ -167,7 +196,7 @@ public sealed class SteamAuthenticationManagerTests
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Description, ReleaseYear
+            SELECT Description, ReleaseYear, IsFree
             FROM SteamGames
             WHERE SteamAppId = $appId;
             """;
@@ -176,13 +205,41 @@ public sealed class SteamAuthenticationManagerTests
         Assert.IsTrue(reader.Read());
         return (
             reader.IsDBNull(0) ? null : reader.GetString(0),
-            reader.IsDBNull(1) ? null : reader.GetInt32(1));
+            reader.IsDBNull(1) ? null : reader.GetInt32(1),
+            reader.IsDBNull(2) ? null : reader.GetBoolean(2));
+    }
+
+    private string[] ReadStoreLabels(
+        string tableName,
+        string columnName,
+        int appId)
+    {
+        using var connection =
+            new SqliteConnection($"Data Source={_databasePath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT metadata.{columnName}
+            FROM {tableName} AS metadata
+            INNER JOIN SteamGames AS steam
+                ON steam.GameId = metadata.GameId
+            WHERE steam.SteamAppId = $appId
+            ORDER BY metadata.{columnName};
+            """;
+        command.Parameters.AddWithValue("$appId", appId);
+        using var reader = command.ExecuteReader();
+        var results = new List<string>();
+        while (reader.Read())
+        {
+            results.Add(reader.GetString(0));
+        }
+        return results.ToArray();
     }
 
     private SteamAuthenticationManager CreateManager()
     {
-        var handler = new SteamApiMessageHandler();
-        var httpClient = new HttpClient(handler)
+        _apiHandler = new SteamApiMessageHandler();
+        var httpClient = new HttpClient(_apiHandler)
         {
             BaseAddress = new Uri("https://api.steampowered.com/")
         };
@@ -215,16 +272,27 @@ public sealed class SteamAuthenticationManagerTests
             var name = appId == 10 ? "Long Game" : "Short Game";
             var year = appId == 10 ? 2011 : 2020;
             return Task.FromResult<SteamStoreGame?>(
-                new SteamStoreGame($"{name} description", year));
+                new SteamStoreGame(
+                    $"{name} description",
+                    year,
+                    ["Atlas Developer"],
+                    ["Atlas Publisher"],
+                    ["Strategy"],
+                    IsFree: false));
         }
     }
 
     private sealed class SteamApiMessageHandler : HttpMessageHandler
     {
+        private int _requestCount;
+
+        public int RequestCount => _requestCount;
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
+            Interlocked.Increment(ref _requestCount);
             var json = request.RequestUri?.AbsolutePath.Contains(
                 "GetPlayerSummaries",
                 StringComparison.Ordinal) == true

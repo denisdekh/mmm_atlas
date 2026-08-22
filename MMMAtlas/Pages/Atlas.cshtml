@@ -1,0 +1,20 @@
+@page "/atlas"
+@{
+    ViewData["Title"] = "Game atlas";
+    ViewData["Page"] = "atlas";
+}
+
+<section class="atlas-page" data-game-api>
+    <div class="atlas-page-heading">
+        <div>
+            <p class="eyebrow">The living atlas</p>
+            <h1>Explore how games play.</h1>
+        </div>
+        <p class="game-api-intro">
+            Every point is anchored to its community Micro, Meso, and Macro
+            ratios. Zoom in to reveal game icons and their local neighborhoods.
+        </p>
+    </div>
+
+    <partial name="_AtlasView" />
+</section>

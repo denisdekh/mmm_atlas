@@ -79,6 +79,8 @@ CREATE TABLE IF NOT EXISTS SteamGames
     Name         TEXT    NULL,
     Description  TEXT    NULL,
     ReleaseYear  INTEGER NULL,
+    IsFree       INTEGER NULL,
+    StoreMetadataFetchedAtUtc TEXT NULL,
     CreatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -91,7 +93,54 @@ CREATE TABLE IF NOT EXISTS SteamGames
     CONSTRAINT CK_SteamGames_SteamAppId_Positive
         CHECK (SteamAppId > 0),
     CONSTRAINT CK_SteamGames_ReleaseYear_Range
-        CHECK (ReleaseYear IS NULL OR ReleaseYear BETWEEN 1970 AND 2100)
+        CHECK (ReleaseYear IS NULL OR ReleaseYear BETWEEN 1970 AND 2100),
+    CONSTRAINT CK_SteamGames_IsFree_Boolean
+        CHECK (IsFree IS NULL OR IsFree IN (0, 1))
+);
+
+CREATE TABLE IF NOT EXISTS SteamGameDevelopers
+(
+    GameId        INTEGER NOT NULL,
+    DeveloperName TEXT    NOT NULL,
+
+    CONSTRAINT PK_SteamGameDevelopers
+        PRIMARY KEY (GameId, DeveloperName),
+    CONSTRAINT FK_SteamGameDevelopers_SteamGames_GameId
+        FOREIGN KEY (GameId)
+        REFERENCES SteamGames (GameId)
+        ON DELETE CASCADE,
+    CONSTRAINT CK_SteamGameDevelopers_Name_NotBlank
+        CHECK (length(trim(DeveloperName)) > 0)
+);
+
+CREATE TABLE IF NOT EXISTS SteamGamePublishers
+(
+    GameId        INTEGER NOT NULL,
+    PublisherName TEXT    NOT NULL,
+
+    CONSTRAINT PK_SteamGamePublishers
+        PRIMARY KEY (GameId, PublisherName),
+    CONSTRAINT FK_SteamGamePublishers_SteamGames_GameId
+        FOREIGN KEY (GameId)
+        REFERENCES SteamGames (GameId)
+        ON DELETE CASCADE,
+    CONSTRAINT CK_SteamGamePublishers_Name_NotBlank
+        CHECK (length(trim(PublisherName)) > 0)
+);
+
+CREATE TABLE IF NOT EXISTS SteamGameGenres
+(
+    GameId    INTEGER NOT NULL,
+    GenreName TEXT    NOT NULL,
+
+    CONSTRAINT PK_SteamGameGenres
+        PRIMARY KEY (GameId, GenreName),
+    CONSTRAINT FK_SteamGameGenres_SteamGames_GameId
+        FOREIGN KEY (GameId)
+        REFERENCES SteamGames (GameId)
+        ON DELETE CASCADE,
+    CONSTRAINT CK_SteamGameGenres_Name_NotBlank
+        CHECK (length(trim(GenreName)) > 0)
 );
 
 CREATE TABLE IF NOT EXISTS GameAtlasIcons

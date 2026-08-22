@@ -53,15 +53,58 @@ VALUES
     (4, datetime('now', '-6 days'))
 ON CONFLICT (GameId) DO NOTHING;
 
-INSERT INTO SteamGames (GameId, SteamAppId, CreatedAtUtc, UpdatedAtUtc)
+INSERT INTO SteamGames
+(
+    GameId,
+    SteamAppId,
+    ReleaseYear,
+    IsFree,
+    StoreMetadataFetchedAtUtc,
+    CreatedAtUtc,
+    UpdatedAtUtc
+)
 VALUES
-    (1, 620,     datetime('now', '-28 days'), datetime('now')),
-    (2, 427520,  datetime('now', '-22 days'), datetime('now')),
-    (3, 281990,  datetime('now', '-15 days'), datetime('now')),
-    (4, 1145360, datetime('now', '-6 days'),  datetime('now'))
+    (1, 620,     2011, 0, datetime('now'), datetime('now', '-28 days'), datetime('now')),
+    (2, 427520,  2020, 0, datetime('now'), datetime('now', '-22 days'), datetime('now')),
+    (3, 281990,  2016, 0, datetime('now'), datetime('now', '-15 days'), datetime('now')),
+    (4, 1145360, 2020, 0, datetime('now'), datetime('now', '-6 days'),  datetime('now'))
 ON CONFLICT (GameId) DO UPDATE SET
     SteamAppId = excluded.SteamAppId,
+    ReleaseYear = excluded.ReleaseYear,
+    IsFree = excluded.IsFree,
+    StoreMetadataFetchedAtUtc = excluded.StoreMetadataFetchedAtUtc,
     UpdatedAtUtc = excluded.UpdatedAtUtc;
+
+INSERT INTO SteamGameDevelopers (GameId, DeveloperName)
+VALUES
+    (1, 'Valve'),
+    (2, 'Wube Software LTD.'),
+    (3, 'Paradox Development Studio'),
+    (4, 'Supergiant Games')
+ON CONFLICT (GameId, DeveloperName) DO NOTHING;
+
+INSERT INTO SteamGamePublishers (GameId, PublisherName)
+VALUES
+    (1, 'Valve'),
+    (2, 'Wube Software LTD.'),
+    (3, 'Paradox Interactive'),
+    (4, 'Supergiant Games')
+ON CONFLICT (GameId, PublisherName) DO NOTHING;
+
+INSERT INTO SteamGameGenres (GameId, GenreName)
+VALUES
+    (1, 'Action'),
+    (1, 'Adventure'),
+    (2, 'Casual'),
+    (2, 'Indie'),
+    (2, 'Simulation'),
+    (2, 'Strategy'),
+    (3, 'Simulation'),
+    (3, 'Strategy'),
+    (4, 'Action'),
+    (4, 'Indie'),
+    (4, 'RPG')
+ON CONFLICT (GameId, GenreName) DO NOTHING;
 
 INSERT INTO DevelopmentGameInfo
 (

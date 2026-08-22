@@ -1,3 +1,4 @@
+@inject AtlasBuildPolicy BuildPolicy
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,6 +10,8 @@
 </head>
 <body
     data-page="@ViewData["Page"]"
+    data-build-mode="@BuildPolicy.Mode.ToString().ToLowerInvariant()"
+    data-test-features-enabled="@BuildPolicy.TestFeaturesEnabled.ToString().ToLowerInvariant()"
     data-authenticated="@((User.Identity?.IsAuthenticated == true).ToString().ToLowerInvariant())">
     <header class="site-header">
         <a class="brand" asp-page="/Index" aria-label="MMM Atlas home">
@@ -18,7 +21,7 @@
 
         <nav class="site-nav" aria-label="Primary navigation">
             <a asp-page="/Index" asp-fragment="atlas">Explore the model</a>
-            <a asp-page="/Index" asp-fragment="games">Test game API</a>
+            <a asp-page="/Atlas">Game atlas</a>
             <a asp-page="/Index" asp-fragment="about">About</a>
             @if (User.Identity?.IsAuthenticated == true)
             {

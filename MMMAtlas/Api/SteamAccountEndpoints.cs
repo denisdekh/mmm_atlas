@@ -106,7 +106,9 @@ public static class SteamAccountEndpoints
             cancellationToken);
 
         return WantsHtml(httpContext.Request)
-            ? Results.Redirect("/dashboard?notice=preference-saved")
+            ? Results.Redirect(enabled
+                ? "/dashboard?notice=collection-enabled"
+                : "/dashboard?notice=erased")
             : Results.NoContent();
     }
 

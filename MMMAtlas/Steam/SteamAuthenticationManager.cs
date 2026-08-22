@@ -11,12 +11,10 @@ public sealed class SteamAuthenticationManager(
 {
     public async Task<SteamSignInResult> CompleteSignInAsync(
         long steamId,
-        bool collectionConsent,
         CancellationToken cancellationToken)
     {
         var account = await GetOrCreateAccountAsync(
             steamId,
-            collectionConsent,
             cancellationToken);
 
         if (account.DataCollectionEnabled)
@@ -235,7 +233,6 @@ public sealed class SteamAuthenticationManager(
 
     private async Task<SteamAccount> GetOrCreateAccountAsync(
         long steamId,
-        bool collectionConsent,
         CancellationToken cancellationToken)
     {
         await using var connection = new SqliteConnection(database.Value);
@@ -260,21 +257,6 @@ public sealed class SteamAuthenticationManager(
                 var enabled = reader.GetBoolean(1);
                 await reader.DisposeAsync();
 
-                if (collectionConsent && !enabled)
-                {
-                    await ExecuteAsync(
-                        connection,
-                        """
-                        UPDATE SteamAccounts
-                        SET DataCollectionEnabled = 1,
-                            UpdatedAtUtc = CURRENT_TIMESTAMP
-                        WHERE UserId = $userId;
-                        """,
-                        userId,
-                        cancellationToken);
-                    enabled = true;
-                }
-
                 await transaction.CommitAsync(cancellationToken);
                 return new SteamAccount(userId, steamId, enabled);
             }
@@ -293,25 +275,20 @@ public sealed class SteamAuthenticationManager(
             INSERT INTO SteamAccounts
             (
                 UserId,
-                SteamId,
-                DataCollectionEnabled
+                SteamId
             )
             VALUES
             (
                 $userId,
-                $steamId,
-                $dataCollectionEnabled
+                $steamId
             );
             """;
         createAccountCommand.Parameters.AddWithValue("$userId", newUserId);
         createAccountCommand.Parameters.AddWithValue("$steamId", steamId);
-        createAccountCommand.Parameters.AddWithValue(
-            "$dataCollectionEnabled",
-            collectionConsent ? 1 : 0);
         await createAccountCommand.ExecuteNonQueryAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
-        return new SteamAccount(newUserId, steamId, collectionConsent);
+        return new SteamAccount(newUserId, steamId, false);
     }
 
     private async Task<SteamAccount?> GetAccountAsync(
@@ -419,23 +396,27 @@ public sealed class SteamAuthenticationManager(
             return new Dictionary<int, SteamStoreGame>();
         }
 
-        var existingAppIds = new HashSet<int>();
+        var appIdsWithStoreMetadata = new HashSet<int>();
         await using (var connection = new SqliteConnection(database.Value))
         {
             await connection.OpenAsync(cancellationToken);
             await using var command = connection.CreateCommand();
-            command.CommandText = "SELECT SteamAppId FROM SteamGames;";
+            command.CommandText = """
+                SELECT SteamAppId
+                FROM SteamGames
+                WHERE StoreMetadataFetchedAtUtc IS NOT NULL;
+                """;
             await using var reader =
                 await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                existingAppIds.Add(reader.GetInt32(0));
+                appIdsWithStoreMetadata.Add(reader.GetInt32(0));
             }
         }
 
         var newAppIds = library.Games
             .Select(game => game.AppId)
-            .Where(appId => !existingAppIds.Contains(appId))
+            .Where(appId => !appIdsWithStoreMetadata.Contains(appId))
             .Distinct()
             .ToArray();
         var results = new ConcurrentDictionary<int, SteamStoreGame>();
@@ -571,6 +552,12 @@ public sealed class SteamAuthenticationManager(
                 SET Name = COALESCE($name, Name),
                     Description = COALESCE(Description, $description),
                     ReleaseYear = COALESCE(ReleaseYear, $releaseYear),
+                    IsFree = COALESCE($isFree, IsFree),
+                    StoreMetadataFetchedAtUtc = CASE
+                        WHEN $storeMetadataFetched = 1
+                            THEN CURRENT_TIMESTAMP
+                        ELSE StoreMetadataFetchedAtUtc
+                    END,
                     UpdatedAtUtc = CURRENT_TIMESTAMP
                 WHERE GameId = $gameId;
                 """;
@@ -586,9 +573,25 @@ public sealed class SteamAuthenticationManager(
             updateCommand.Parameters.AddWithValue(
                 "$releaseYear",
                 (object?)storeGame?.ReleaseYear ?? DBNull.Value);
+            updateCommand.Parameters.AddWithValue(
+                "$isFree",
+                (object?)storeGame?.IsFree ?? DBNull.Value);
+            updateCommand.Parameters.AddWithValue(
+                "$storeMetadataFetched",
+                storeGame is null ? 0 : 1);
             await updateCommand.ExecuteNonQueryAsync(cancellationToken);
 
-            return Convert.ToInt64(existingGameId);
+            var existingId = Convert.ToInt64(existingGameId);
+            if (storeGame is not null)
+            {
+                await ReplaceStoreLabelsAsync(
+                    connection,
+                    existingId,
+                    storeGame,
+                    cancellationToken);
+            }
+
+            return existingId;
         }
 
         await using var createGameCommand = connection.CreateCommand();
@@ -602,9 +605,29 @@ public sealed class SteamAuthenticationManager(
         await using var createSteamGameCommand = connection.CreateCommand();
         createSteamGameCommand.CommandText = """
             INSERT INTO SteamGames
-                (GameId, SteamAppId, Name, Description, ReleaseYear)
+                (
+                    GameId,
+                    SteamAppId,
+                    Name,
+                    Description,
+                    ReleaseYear,
+                    IsFree,
+                    StoreMetadataFetchedAtUtc
+                )
             VALUES
-                ($gameId, $steamAppId, $name, $description, $releaseYear);
+                (
+                    $gameId,
+                    $steamAppId,
+                    $name,
+                    $description,
+                    $releaseYear,
+                    $isFree,
+                    CASE
+                        WHEN $storeMetadataFetched = 1
+                            THEN CURRENT_TIMESTAMP
+                        ELSE NULL
+                    END
+                );
             """;
         createSteamGameCommand.Parameters.AddWithValue("$gameId", gameId);
         createSteamGameCommand.Parameters.AddWithValue("$steamAppId", game.AppId);
@@ -617,9 +640,79 @@ public sealed class SteamAuthenticationManager(
         createSteamGameCommand.Parameters.AddWithValue(
             "$releaseYear",
             (object?)storeGame?.ReleaseYear ?? DBNull.Value);
+        createSteamGameCommand.Parameters.AddWithValue(
+            "$isFree",
+            (object?)storeGame?.IsFree ?? DBNull.Value);
+        createSteamGameCommand.Parameters.AddWithValue(
+            "$storeMetadataFetched",
+            storeGame is null ? 0 : 1);
         await createSteamGameCommand.ExecuteNonQueryAsync(cancellationToken);
 
+        if (storeGame is not null)
+        {
+            await ReplaceStoreLabelsAsync(
+                connection,
+                gameId,
+                storeGame,
+                cancellationToken);
+        }
+
         return gameId;
+    }
+
+    private static async Task ReplaceStoreLabelsAsync(
+        SqliteConnection connection,
+        long gameId,
+        SteamStoreGame storeGame,
+        CancellationToken cancellationToken)
+    {
+        await ReplaceStoreLabelsAsync(
+            connection,
+            gameId,
+            "SteamGameDevelopers",
+            "DeveloperName",
+            storeGame.Developers,
+            cancellationToken);
+        await ReplaceStoreLabelsAsync(
+            connection,
+            gameId,
+            "SteamGamePublishers",
+            "PublisherName",
+            storeGame.Publishers,
+            cancellationToken);
+        await ReplaceStoreLabelsAsync(
+            connection,
+            gameId,
+            "SteamGameGenres",
+            "GenreName",
+            storeGame.Genres,
+            cancellationToken);
+    }
+
+    private static async Task ReplaceStoreLabelsAsync(
+        SqliteConnection connection,
+        long gameId,
+        string tableName,
+        string columnName,
+        IReadOnlyList<string> labels,
+        CancellationToken cancellationToken)
+    {
+        await using var deleteCommand = connection.CreateCommand();
+        deleteCommand.CommandText = $"DELETE FROM {tableName} WHERE GameId = $gameId;";
+        deleteCommand.Parameters.AddWithValue("$gameId", gameId);
+        await deleteCommand.ExecuteNonQueryAsync(cancellationToken);
+
+        foreach (var label in labels)
+        {
+            await using var insertCommand = connection.CreateCommand();
+            insertCommand.CommandText = $"""
+                INSERT OR IGNORE INTO {tableName} (GameId, {columnName})
+                VALUES ($gameId, $label);
+                """;
+            insertCommand.Parameters.AddWithValue("$gameId", gameId);
+            insertCommand.Parameters.AddWithValue("$label", label);
+            await insertCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
     private static async Task SetLibraryStatusAsync(

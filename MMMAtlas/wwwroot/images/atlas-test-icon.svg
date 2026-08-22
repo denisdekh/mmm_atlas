@@ -5,10 +5,10 @@
       <stop offset="1" stop-color="#11141c"/>
     </radialGradient>
   </defs>
-  <circle cx="64" cy="64" r="62" fill="url(#background)" stroke="#e9b949" stroke-width="4"/>
-  <circle cx="64" cy="35" r="18" fill="none" stroke="#f05a47" stroke-width="5" opacity=".9"/>
-  <circle cx="43" cy="76" r="18" fill="none" stroke="#e9b949" stroke-width="5" opacity=".9"/>
-  <circle cx="85" cy="76" r="18" fill="none" stroke="#5bc1a9" stroke-width="5" opacity=".9"/>
+  <circle cx="64" cy="64" r="62" fill="url(#background)" stroke="#75fb60" stroke-width="4"/>
+  <circle cx="64" cy="35" r="18" fill="none" stroke="#fb6069" stroke-width="5" opacity=".9"/>
+  <circle cx="43" cy="76" r="18" fill="none" stroke="#75fb60" stroke-width="5" opacity=".9"/>
+  <circle cx="85" cy="76" r="18" fill="none" stroke="#607cfb" stroke-width="5" opacity=".9"/>
   <path d="M48 101h32" stroke="#f3f1e9" stroke-width="5" stroke-linecap="round"/>
   <path d="M64 91v20" stroke="#f3f1e9" stroke-width="5" stroke-linecap="round"/>
 </svg>

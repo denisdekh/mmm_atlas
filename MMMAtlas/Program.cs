@@ -3,11 +3,13 @@ using AspNet.Security.OpenId.Steam;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using MMMAtlas.Api;
+using MMMAtlas.Configuration;
 using MMMAtlas.Data;
 using MMMAtlas.Steam;
 using MMMAtlas.Voting;
 
 var builder = WebApplication.CreateBuilder(args);
+var buildPolicy = AtlasBuildPolicy.Current;
 
 var steamApiKey = builder.Configuration["Steam:ApiKey"]
     ?? throw new InvalidOperationException("Steam:ApiKey is not configured.");
@@ -15,6 +17,7 @@ var steamApiKey = builder.Configuration["Steam:ApiKey"]
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 builder.Services.AddAuthorization();
+builder.Services.AddSingleton(buildPolicy);
 
 builder.Services.AddSingleton(new SteamApiOptions
 {
@@ -103,20 +106,10 @@ builder.Services
                 return;
             }
 
-            var collectionConsent =
-                context.Properties?.Items.TryGetValue(
-                    AuthenticationSchemes.CollectionConsentProperty,
-                    out var consentValue) == true
-                && string.Equals(
-                    consentValue,
-                    bool.TrueString,
-                    StringComparison.OrdinalIgnoreCase);
-
             var manager = context.HttpContext.RequestServices
                 .GetRequiredService<SteamAuthenticationManager>();
             var result = await manager.CompleteSignInAsync(
                 steamId,
-                collectionConsent,
                 context.HttpContext.RequestAborted);
 
             var name = string.IsNullOrWhiteSpace(result.PersonaName)
@@ -139,9 +132,11 @@ builder.Services
     });
 
 var connectionString =
-    builder.Configuration.GetConnectionString("MMMAtlas")
+    builder.Configuration.GetConnectionString(
+        buildPolicy.DatabaseConnectionName)
     ?? throw new InvalidOperationException(
-        "Connection string 'MMMAtlas' is not configured.");
+        $"Connection string '{buildPolicy.DatabaseConnectionName}' "
+        + "is not configured.");
 
 var database = DatabaseConnection.Create(
     connectionString,
@@ -163,7 +158,7 @@ builder.Services
 
 var app = builder.Build();
 
-if (!app.Environment.IsDevelopment())
+if (!buildPolicy.DebugEnabled)
 {
     app.UseExceptionHandler("/error");
     app.UseHsts();
@@ -179,7 +174,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
-if (app.Environment.IsDevelopment())
+if (buildPolicy.UsesDevelopmentDatabase)
 {
     await DevelopmentDatabase.InitializeAsync(
         database,

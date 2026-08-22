@@ -9,30 +9,18 @@
     <h1>Sign in through Steam</h1>
 
     <p>
-        Steam verifies your identity and returns your Steam ID. MMM Atlas can
-        store your Steam profile name, profile link, avatar, owned games and
-        playtime so they can be shown in your dashboard.
+        Steam verifies your identity and returns your Steam ID so MMM Atlas can
+        create your account and sign you in.
     </p>
 
     <p>
-        You can clear this stored profile and library data at any time. After
-        clearing it, MMM Atlas retains your Steam ID, local account, submitted
-        votes, and disabled collection preference so you can still sign in and
-        the app can honor your opt-out.
+        <strong>For a new account, MMM Atlas will not collect your Steam
+        profile, game library, or playtime unless and until you grant
+        permission.</strong> After signing in, you can opt in from your
+        dashboard if you want to use features that need that data.
     </p>
 
     <form method="post">
-        <label>
-            <input asp-for="CollectSteamData" />
-            Allow MMM Atlas to fetch and store my Steam profile and game data.
-        </label>
-
-        <p>
-            If you previously cleared your data, selecting this option opts you
-            back in. Leaving it unselected still lets you sign in without
-            collecting profile or library data.
-        </p>
-
         <button type="submit">Continue to Steam</button>
     </form>
 </section>

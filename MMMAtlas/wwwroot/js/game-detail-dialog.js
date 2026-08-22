@@ -1,4 +1,5 @@
 import { getOwnedGame } from "./user-games-cache.js";
+import { createAxisTooltip } from "./axis-tooltips.js";
 
 const gameCache = new Map();
 const publicVotesCache = new Map();
@@ -359,9 +360,8 @@ function createAxisBar(label, value, maximumRatio, axis) {
     fill.style.height = `${Math.max(0, Math.min(1, scaledValue)) * 100}%`;
     track.append(fill);
 
-    const axisLabel = document.createElement("span");
-    axisLabel.className = "axis-ratio-label";
-    axisLabel.textContent = label;
+    const axisLabel = createAxisTooltip(axis, label);
+    axisLabel.classList.add("axis-ratio-label");
     item.append(valueLabel, track, axisLabel);
     return item;
 }

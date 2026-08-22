@@ -8,7 +8,7 @@ namespace MMMAtlas.Tests;
 public sealed class SteamStoreClientTests
 {
     [TestMethod]
-    public async Task GetGameReadsDescriptionAndReleaseYear()
+    public async Task GetGameReadsFilterMetadata()
     {
         using var httpClient = new HttpClient(new StoreMessageHandler())
         {
@@ -23,6 +23,16 @@ public sealed class SteamStoreClientTests
         Assert.IsNotNull(game);
         Assert.AreEqual("Test & description", game.Description);
         Assert.AreEqual(2011, game.ReleaseYear);
+        CollectionAssert.AreEqual(
+            new[] { "Valve" },
+            game.Developers.ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "Valve", "Electronic Arts" },
+            game.Publishers.ToArray());
+        CollectionAssert.AreEqual(
+            new[] { "Action", "Adventure" },
+            game.Genres.ToArray());
+        Assert.IsFalse(game.IsFree);
     }
 
     private sealed class StoreMessageHandler : HttpMessageHandler
@@ -41,6 +51,13 @@ public sealed class SteamStoreClientTests
                     "success": true,
                     "data": {
                       "short_description": " <strong>Test</strong> &amp; description ",
+                      "developers": [" Valve ", "Valve"],
+                      "publishers": ["Valve", "Electronic Arts"],
+                      "genres": [
+                        { "id": "1", "description": "Action" },
+                        { "id": "25", "description": "Adventure" }
+                      ],
+                      "is_free": false,
                       "release_date": {
                         "coming_soon": false,
                         "date": "18 Apr, 2011"

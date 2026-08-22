@@ -187,7 +187,8 @@
             grid-template-columns: repeat(4, minmax(290px, 1fr));
             grid-template-areas:
                 "users steam-accounts library votes"
-                "games steam-games aggregates development";
+                "games steam-games aggregates development"
+                "atlas-icons developers publishers genres";
             gap: 2rem;
             align-items: start;
         }
@@ -304,6 +305,10 @@
         #table-votes { grid-area: votes; }
         #table-games { grid-area: games; }
         #table-steam-games { grid-area: steam-games; }
+        #table-steam-game-developers { grid-area: developers; }
+        #table-steam-game-publishers { grid-area: publishers; }
+        #table-steam-game-genres { grid-area: genres; }
+        #table-game-atlas-icons { grid-area: atlas-icons; }
         #table-game-vote-aggregates { grid-area: aggregates; }
         #table-development-game-info { grid-area: development; }
 
@@ -344,8 +349,10 @@
                 grid-template-areas:
                     "users steam-accounts"
                     "games steam-games"
-                    "library votes"
-                    "aggregates development";
+                    "developers publishers"
+                    "genres library"
+                    "votes aggregates"
+                    "atlas-icons development";
             }
         }
 
@@ -375,9 +382,13 @@
                     "steam-accounts"
                     "games"
                     "steam-games"
+                    "developers"
+                    "publishers"
+                    "genres"
                     "library"
                     "votes"
                     "aggregates"
+                    "atlas-icons"
                     "development";
                 gap: 1rem;
             }
@@ -422,7 +433,7 @@
         <header>
             <div>
                 <h1>MMM Atlas SQLite schema</h1>
-                <p class="subtitle">Nine tables, nine displayed foreign-key relationships, and two explicit secondary indexes.</p>
+                <p class="subtitle">Twelve tables, twelve displayed foreign-key relationships, and two explicit secondary indexes.</p>
             </div>
             <div class="source">Source: <code>SQLiteTableSchemas.sql</code></div>
         </header>
@@ -552,6 +563,8 @@
                             <tr><td class="field-name">Name</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
                             <tr><td class="field-name">Description</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
                             <tr><td class="field-name">ReleaseYear</td><td class="type">INTEGER</td><td></td><td class="default">NULL · 1970–2100</td></tr>
+                            <tr><td class="field-name">IsFree</td><td class="type">INTEGER</td><td></td><td class="default">NULL · 0 or 1</td></tr>
+                            <tr><td class="field-name">StoreMetadataFetchedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
                             <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
                             <tr><td class="field-name">UpdatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
                         </tbody>
@@ -559,6 +572,52 @@
                     <div class="card-footer">
                         <div><strong>Indexes:</strong> <code>PK_SteamGames (GameId)</code>; <code>UQ_SteamGames_SteamAppId (SteamAppId)</code></div>
                         <div><strong>FK:</strong> <code>GameId → Games.GameId ON DELETE RESTRICT</code></div>
+                        <div><strong>Checks:</strong> <code>ReleaseYear IS NULL OR 1970–2100</code>; <code>IsFree IS NULL OR IN (0, 1)</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-steam-game-developers" data-table="SteamGameDevelopers">
+                    <h2><span>SteamGameDevelopers</span><span class="table-kind">store metadata</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">DeveloperName</td><td class="type">TEXT</td><td><span class="keys"><span class="badge badge-pk">PK</span></span></td><td class="default">NOT NULL · nonblank</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_SteamGameDevelopers (GameId, DeveloperName)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → SteamGames.GameId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-steam-game-publishers" data-table="SteamGamePublishers">
+                    <h2><span>SteamGamePublishers</span><span class="table-kind">store metadata</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">PublisherName</td><td class="type">TEXT</td><td><span class="keys"><span class="badge badge-pk">PK</span></span></td><td class="default">NOT NULL · nonblank</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_SteamGamePublishers (GameId, PublisherName)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → SteamGames.GameId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-steam-game-genres" data-table="SteamGameGenres">
+                    <h2><span>SteamGameGenres</span><span class="table-kind">store metadata</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">GenreName</td><td class="type">TEXT</td><td><span class="keys"><span class="badge badge-pk">PK</span></span></td><td class="default">NOT NULL · nonblank</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_SteamGameGenres (GameId, GenreName)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → SteamGames.GameId ON DELETE CASCADE</code></div>
                     </div>
                 </article>
 
@@ -629,6 +688,9 @@
                 <li>SteamLibraryGames.UserId references SteamAccounts.UserId.</li>
                 <li>SteamLibraryGames.GameId references SteamGames.GameId.</li>
                 <li>SteamGames.GameId references Games.GameId.</li>
+                <li>SteamGameDevelopers.GameId references SteamGames.GameId.</li>
+                <li>SteamGamePublishers.GameId references SteamGames.GameId.</li>
+                <li>SteamGameGenres.GameId references SteamGames.GameId.</li>
                 <li>Votes.UserId references Users.UserId.</li>
                 <li>Votes.GameId references Games.GameId.</li>
                 <li>GameAtlasIcons.GameId references Games.GameId.</li>
@@ -655,6 +717,9 @@
                 ["table-steam-library-games", "table-steam-accounts"],
                 ["table-steam-library-games", "table-steam-games"],
                 ["table-steam-games", "table-games"],
+                ["table-steam-game-developers", "table-steam-games"],
+                ["table-steam-game-publishers", "table-steam-games"],
+                ["table-steam-game-genres", "table-steam-games"],
                 ["table-votes", "table-users"],
                 ["table-votes", "table-games"],
                 ["table-game-atlas-icons", "table-games"],

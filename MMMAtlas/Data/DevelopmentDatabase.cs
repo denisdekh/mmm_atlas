@@ -146,6 +146,18 @@ public static class DevelopmentDatabase
             "ReleaseYear",
             "INTEGER NULL CHECK (ReleaseYear IS NULL OR ReleaseYear BETWEEN 1970 AND 2100)",
             cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "SteamGames",
+            "IsFree",
+            "INTEGER NULL CHECK (IsFree IS NULL OR IsFree IN (0, 1))",
+            cancellationToken);
+        await EnsureColumnAsync(
+            connection,
+            "SteamGames",
+            "StoreMetadataFetchedAtUtc",
+            "TEXT NULL",
+            cancellationToken);
         await DropColumnIfExistsAsync(
             connection,
             "SteamGames",

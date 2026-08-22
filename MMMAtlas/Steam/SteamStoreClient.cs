@@ -52,7 +52,11 @@ public sealed partial class SteamStoreClient(
 
             return new SteamStoreGame(
                 NormalizeDescription(result.Data.ShortDescription),
-                ReadReleaseYear(result.Data.ReleaseDate?.Date));
+                ReadReleaseYear(result.Data.ReleaseDate?.Date),
+                NormalizeNames(result.Data.Developers),
+                NormalizeNames(result.Data.Publishers),
+                NormalizeNames(result.Data.Genres?.Select(genre => genre.Description)),
+                result.Data.IsFree);
         }
         catch (Exception exception)
             when (exception is HttpRequestException
@@ -96,6 +100,16 @@ public sealed partial class SteamStoreClient(
                 : null;
     }
 
+    private static IReadOnlyList<string> NormalizeNames(
+        IEnumerable<string?>? names) =>
+        names?
+            .Select(name => name?.Trim())
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray()
+        ?? [];
+
     [GeneratedRegex(@"(?<!\d)(?:19[7-9]\d|20\d{2}|2100)(?!\d)")]
     private static partial Regex ReleaseYearPattern();
 
@@ -111,12 +125,23 @@ public sealed partial class SteamStoreClient(
 
     private sealed record StoreGameData(
         [property: JsonPropertyName("short_description")] string? ShortDescription,
-        [property: JsonPropertyName("release_date")] StoreReleaseDate? ReleaseDate);
+        [property: JsonPropertyName("release_date")] StoreReleaseDate? ReleaseDate,
+        [property: JsonPropertyName("developers")] List<string>? Developers,
+        [property: JsonPropertyName("publishers")] List<string>? Publishers,
+        [property: JsonPropertyName("genres")] List<StoreGenre>? Genres,
+        [property: JsonPropertyName("is_free")] bool? IsFree);
 
     private sealed record StoreReleaseDate(
         [property: JsonPropertyName("date")] string? Date);
+
+    private sealed record StoreGenre(
+        [property: JsonPropertyName("description")] string? Description);
 }
 
 public sealed record SteamStoreGame(
     string? Description,
-    int? ReleaseYear);
+    int? ReleaseYear,
+    IReadOnlyList<string> Developers,
+    IReadOnlyList<string> Publishers,
+    IReadOnlyList<string> Genres,
+    bool? IsFree);

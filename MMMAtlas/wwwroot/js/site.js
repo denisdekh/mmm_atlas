@@ -1,16 +1,18 @@
-import { initializeHomePage } from "./pages/home.js";
+import { initializeAtlasPage } from "./pages/atlas.js";
 import { initializeVoteDialog } from "./vote-dialog.js";
 import { initializeGameDetailDialog } from "./game-detail-dialog.js";
 import { initializeUserGamesCache } from "./user-games-cache.js";
+import { initializeAxisTooltips } from "./axis-tooltips.js";
 
 document.documentElement.classList.add("js");
 
 const pageInitializers = {
-    home: initializeHomePage
+    atlas: initializeAtlasPage
 };
 
 const pageName = document.body.dataset.page;
 pageInitializers[pageName]?.();
+initializeAxisTooltips();
 initializeUserGamesCache().catch(() => {
     // The detail dialog still works for public data if the private cache fails.
 });

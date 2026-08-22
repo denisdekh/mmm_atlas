@@ -14,6 +14,13 @@ import {
     relaxPoints,
     selectSpatialRepresentatives
 } from "./atlas-layout.js";
+import { buildFeatures } from "./build-features.js";
+import {
+    collectAtlasFilterOptions,
+    matchesAtlasFilters,
+    nextTriState,
+    parseOptionalFilterNumber
+} from "./atlas-filters.js";
 
 const minimumZoom = 0.75;
 const maximumZoom = 36;
@@ -46,7 +53,27 @@ class AtlasController {
         this.status = root.querySelector("[data-game-status]");
         this.count = root.querySelector("[data-game-count]");
         this.search = root.querySelector("[data-atlas-search]");
-        this.categoryFilter = root.querySelector("[data-atlas-category]");
+        this.filterInputs = [...root.querySelectorAll("[data-atlas-filter]")];
+        this.releaseYearMinimum = root.querySelector("[data-atlas-year-min]");
+        this.releaseYearMaximum = root.querySelector("[data-atlas-year-max]");
+        this.voteCountMinimum = root.querySelector("[data-atlas-votes-min]");
+        this.voteCountMaximum = root.querySelector("[data-atlas-votes-max]");
+        this.developerFilter = root.querySelector("[data-atlas-developer]");
+        this.publisherFilter = root.querySelector("[data-atlas-publisher]");
+        this.genreFilter = root.querySelector("[data-atlas-genre]");
+        this.facetSearchInputs = [
+            ...root.querySelectorAll("[data-atlas-facet-search]")
+        ];
+        this.facetStates = {
+            developer: new Map(),
+            publisher: new Map(),
+            genre: new Map(),
+            price: new Map()
+        };
+        this.extraFilters = root.querySelector("[data-atlas-extra-filters]");
+        this.filterToggle = root.querySelector("[data-atlas-filter-toggle]");
+        this.extraFilterCount = root.querySelector(
+            "[data-atlas-extra-filter-count]");
         this.testControls = root.querySelector("[data-atlas-test-controls]");
         this.testCountInput = root.querySelector("[data-atlas-test-count]");
         this.testSeedInput = root.querySelector("[data-atlas-test-seed]");
@@ -63,6 +90,7 @@ class AtlasController {
         this.visibleNodes = [];
         this.selectedNode = null;
         this.hoveredNode = null;
+        this.keyboardSelectionActive = false;
         this.camera = { zoom: 1, panX: 0, panY: 0 };
         this.viewport = { width: 1, height: 1, baseScale: 1 };
         this.filteredPointCount = 0;
@@ -81,7 +109,9 @@ class AtlasController {
         this.relaxAll = false;
         this.pendingRelaxNode = null;
         this.polling = false;
-        this.testConfiguration = readTestConfiguration();
+        this.testFeaturesEnabled = buildFeatures.testFeaturesEnabled;
+        this.testConfiguration = readTestConfiguration(
+            this.testFeaturesEnabled);
         this.testGeneration = 0;
         this.testCleanupTimer = 0;
         this.fullscreenFallback = false;
@@ -118,7 +148,23 @@ class AtlasController {
 
     bindEvents() {
         this.search?.addEventListener("input", () => this.applyFilters());
-        this.categoryFilter?.addEventListener("change", () => this.applyFilters());
+        for (const input of this.filterInputs) {
+            input.addEventListener("input", () => this.applyFilters());
+        }
+        for (const input of this.facetSearchInputs) {
+            input.addEventListener("input", () => this.filterFacetOptions(
+                input.dataset.atlasFacetSearch,
+                input.value));
+        }
+        for (const input of this.root.querySelectorAll(
+            '[data-atlas-tristate="price"]')) {
+            this.bindTriStateInput(input, "price");
+        }
+        this.filterToggle?.addEventListener("click", () => {
+            this.setExtraFiltersOpen(this.extraFilters.hidden);
+        });
+        this.root.querySelector("[data-atlas-clear-filters]")
+            ?.addEventListener("click", () => this.clearFilters());
         this.root.querySelector("[data-atlas-zoom-in]")
             ?.addEventListener("click", () => this.zoomBy(1.45));
         this.root.querySelector("[data-atlas-zoom-out]")
@@ -162,6 +208,14 @@ class AtlasController {
             passive: false
         });
         this.canvas.addEventListener("keydown", (event) => this.onKeyDown(event));
+        window.addEventListener("scroll", () => {
+            const keyboardSelectionWasActive = this.keyboardSelectionActive;
+            this.keyboardSelectionActive = false;
+            this.setHoveredNode(null);
+            if (keyboardSelectionWasActive && !this.hoveredNode) {
+                this.requestFrame();
+            }
+        }, { passive: true });
 
         document.addEventListener("mmm-atlas:vote-submitted", (event) => {
             this.refreshOne(event.detail.gameId).catch(() => {
@@ -177,6 +231,9 @@ class AtlasController {
             }
         });
         document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !this.extraFilters.hidden) {
+                this.setExtraFiltersOpen(false);
+            }
             if (event.key === "Escape" && this.fullscreenFallback) {
                 this.fullscreenFallback = false;
                 this.syncFullscreenState();
@@ -259,6 +316,7 @@ class AtlasController {
                 }
             }
 
+            this.updateFilterOptions();
             if (initial && this.testConfiguration.enabled) {
                 this.configureTestPoints(
                     this.testConfiguration.count,
@@ -288,6 +346,7 @@ class AtlasController {
     async refreshOne(gameId) {
         const game = await fetchJson(`/api/games/${encodeURIComponent(gameId)}`);
         const result = this.upsertGame(game, { animate: true });
+        this.updateFilterOptions();
         this.applyFilters({ announce: false });
         if (!result.invalid) {
             this.queueRelaxation(this.nodes.get(String(gameId)), 180);
@@ -365,6 +424,10 @@ class AtlasController {
         animate = true,
         updateUrl = false
     } = {}) {
+        if (!this.testFeaturesEnabled) {
+            return;
+        }
+
         const count = clamp(
             Math.floor(Number(countValue) || 0),
             0,
@@ -463,14 +526,11 @@ class AtlasController {
     }
 
     applyFilters({ announce = true } = {}) {
-        const query = this.search?.value.trim().toLocaleLowerCase() ?? "";
-        const category = this.categoryFilter?.value ?? "all";
+        const filters = this.readFilters();
         let filteredPointCount = 0;
         for (const node of this.nodes.values()) {
-            const matchesName = !query
-                || node.game.name.toLocaleLowerCase().includes(query);
-            const matchesCategory = category === "all" || node.category === category;
-            const visible = node.present && matchesName && matchesCategory;
+            const visible = node.present
+                && matchesAtlasFilters(node.game, filters);
             node.filteredIn = visible;
             node.targetAlpha = visible ? 1 : 0;
             filteredPointCount += visible ? 1 : 0;
@@ -484,6 +544,7 @@ class AtlasController {
             this.selectedNode = null;
         }
         this.filteredPointCount = filteredPointCount;
+        this.updateExtraFilterCount(filters);
         if (!this.hasInitializedLod && filteredPointCount > 0) {
             this.currentLod = this.getLod();
             this.lastSimulationKey = this.currentLod.simulationKey;
@@ -502,6 +563,185 @@ class AtlasController {
         }
         this.queueRelaxation(null, 140);
         this.requestFrame();
+    }
+
+    readFilters() {
+        return {
+            query: this.search?.value ?? "",
+            releaseYearMinimum: parseOptionalFilterNumber(
+                this.releaseYearMinimum?.value),
+            releaseYearMaximum: parseOptionalFilterNumber(
+                this.releaseYearMaximum?.value),
+            voteCountMinimum: parseOptionalFilterNumber(
+                this.voteCountMinimum?.value),
+            voteCountMaximum: parseOptionalFilterNumber(
+                this.voteCountMaximum?.value),
+            developer: this.readFacetSelection("developer"),
+            publisher: this.readFacetSelection("publisher"),
+            genre: this.readFacetSelection("genre"),
+            price: this.readFacetSelection("price")
+        };
+    }
+
+    updateFilterOptions() {
+        const games = [...this.nodes.values()]
+            .filter((node) => node.present && !node.test)
+            .map((node) => node.game);
+        const options = collectAtlasFilterOptions(games);
+        this.renderFacetOptions(
+            "developer",
+            this.developerFilter,
+            options.developers);
+        this.renderFacetOptions(
+            "publisher",
+            this.publisherFilter,
+            options.publishers);
+        this.renderFacetOptions("genre", this.genreFilter, options.genres);
+    }
+
+    updateExtraFilterCount(filters) {
+        const count = [
+            filters.developer,
+            filters.publisher,
+            filters.genre,
+            filters.price
+        ].reduce((total, selection) =>
+            total + selection.include.length + selection.exclude.length, 0);
+        this.extraFilterCount.hidden = count === 0;
+        this.extraFilterCount.textContent = String(count);
+    }
+
+    setExtraFiltersOpen(open) {
+        this.extraFilters.hidden = !open;
+        this.filterToggle.setAttribute("aria-expanded", String(open));
+        if (open) {
+            this.facetSearchInputs[0]?.focus();
+        }
+    }
+
+    clearFilters() {
+        for (const input of this.filterInputs) {
+            input.value = "";
+        }
+        for (const input of this.facetSearchInputs) {
+            input.value = "";
+        }
+        for (const states of Object.values(this.facetStates)) {
+            states.clear();
+        }
+        for (const input of this.root.querySelectorAll(
+            "[data-atlas-tristate]")) {
+            this.syncTriStateInput(input, "none");
+        }
+        for (const facet of ["developer", "publisher", "genre"]) {
+            this.filterFacetOptions(facet, "");
+        }
+        this.applyFilters();
+    }
+
+    readFacetSelection(facet) {
+        const selection = { include: [], exclude: [] };
+        for (const [value, state] of this.facetStates[facet]) {
+            if (state === "include") {
+                selection.include.push(value);
+            } else if (state === "exclude") {
+                selection.exclude.push(value);
+            }
+        }
+        return selection;
+    }
+
+    renderFacetOptions(facet, container, labels) {
+        if (!container) {
+            return;
+        }
+        const availableLabels = new Set(labels);
+        for (const value of this.facetStates[facet].keys()) {
+            if (!availableLabels.has(value)) {
+                this.facetStates[facet].delete(value);
+            }
+        }
+
+        const options = labels.map((labelText) => {
+            const label = document.createElement("label");
+            label.className = "atlas-tristate-option";
+            const input = document.createElement("input");
+            input.type = "checkbox";
+            input.value = labelText;
+            input.dataset.atlasTristate = facet;
+            const name = document.createElement("span");
+            name.textContent = labelText;
+            label.append(input, name);
+            this.bindTriStateInput(input, facet);
+            return label;
+        });
+        const empty = document.createElement("p");
+        empty.className = "atlas-facet-empty";
+        empty.dataset.atlasFacetEmpty = "";
+        empty.textContent = labels.length === 0
+            ? "No metadata available"
+            : "No matches";
+        empty.hidden = labels.length > 0;
+        container.replaceChildren(...options, empty);
+
+        const search = this.root.querySelector(
+            `[data-atlas-facet-search="${facet}"]`);
+        this.filterFacetOptions(facet, search?.value ?? "");
+    }
+
+    bindTriStateInput(input, facet) {
+        this.syncTriStateInput(
+            input,
+            this.facetStates[facet].get(input.value) ?? "none");
+        input.addEventListener("click", () => {
+            const state = nextTriState(
+                this.facetStates[facet].get(input.value) ?? "none");
+            if (state === "none") {
+                this.facetStates[facet].delete(input.value);
+            } else {
+                this.facetStates[facet].set(input.value, state);
+            }
+            this.syncTriStateInput(input, state);
+            this.applyFilters();
+        });
+    }
+
+    syncTriStateInput(input, state) {
+        input.dataset.atlasFilterState = state;
+        input.checked = state === "include";
+        input.indeterminate = state === "exclude";
+        input.setAttribute(
+            "aria-checked",
+            state === "exclude" ? "mixed" : String(input.checked));
+        const option = input.closest(".atlas-tristate-option");
+        if (option) {
+            option.dataset.filterState = state;
+        }
+    }
+
+    filterFacetOptions(facet, queryValue) {
+        const container = this.root.querySelector(`[data-atlas-${facet}]`);
+        if (!container) {
+            return;
+        }
+        const query = queryValue.trim().toLocaleLowerCase();
+        let visibleCount = 0;
+        for (const option of container.querySelectorAll(
+            ".atlas-tristate-option")) {
+            const optionName = option.querySelector("span")?.textContent ?? "";
+            const visible = !query
+                || optionName.toLocaleLowerCase().includes(query);
+            option.hidden = !visible;
+            visibleCount += visible ? 1 : 0;
+        }
+        const empty = container.querySelector("[data-atlas-facet-empty]");
+        if (empty) {
+            empty.hidden = visibleCount > 0;
+            empty.textContent = container.querySelector(
+                ".atlas-tristate-option")
+                ? "No matches"
+                : "No metadata available";
+        }
     }
 
     updateStatus(invalidCount) {
@@ -887,13 +1127,18 @@ class AtlasController {
         }
     }
 
-    hitTest(x, y) {
-        const radius = Math.max(8, this.currentLod.radius + 6);
+    hitTest(x, y, { padding = 0, minimumRadius = 0 } = {}) {
+        const radius = Math.max(
+            minimumRadius,
+            this.currentLod.radius + padding);
         let closest = null;
         let closestDistance = Number.POSITIVE_INFINITY;
         for (const node of this.hitIndex.query(x, y, radius)) {
             const distance = Math.hypot(node.screenX - x, node.screenY - y);
-            if (distance <= radius && distance < closestDistance) {
+            const nodeRadius = Math.max(
+                minimumRadius,
+                node.displayRadius + padding);
+            if (distance <= nodeRadius && distance < closestDistance) {
                 closest = node;
                 closestDistance = distance;
             }
@@ -1142,6 +1387,7 @@ class AtlasController {
         if (event.button !== 0) {
             return;
         }
+        this.keyboardSelectionActive = false;
         const point = this.pointerPosition(event);
         this.activePointers.set(event.pointerId, point);
         this.pointer = {
@@ -1168,6 +1414,10 @@ class AtlasController {
     }
 
     onPointerMove(event) {
+        if (this.keyboardSelectionActive) {
+            this.keyboardSelectionActive = false;
+            this.requestFrame();
+        }
         const point = this.pointerPosition(event);
         if (this.activePointers.has(event.pointerId)) {
             this.activePointers.set(event.pointerId, point);
@@ -1241,7 +1491,10 @@ class AtlasController {
         if (wasDragged) {
             this.queueRelaxation(null, 120);
         } else {
-            const node = this.hitTest(point.x, point.y);
+            const node = this.hitTest(point.x, point.y, {
+                padding: 4,
+                minimumRadius: 8
+            });
             if (node) {
                 this.activateNode(node);
             }
@@ -1257,6 +1510,16 @@ class AtlasController {
     }
 
     onWheel(event) {
+        const keyboardSelectionWasActive = this.keyboardSelectionActive;
+        this.keyboardSelectionActive = false;
+        this.setHoveredNode(null);
+        if (keyboardSelectionWasActive && !this.hoveredNode) {
+            this.requestFrame();
+        }
+        if (!event.ctrlKey) {
+            return;
+        }
+
         event.preventDefault();
         const point = this.pointerPosition(event);
         const factor = Math.exp(-event.deltaY * 0.0014);
@@ -1286,6 +1549,7 @@ class AtlasController {
         }
         if (event.key === "Escape") {
             this.selectedNode = null;
+            this.keyboardSelectionActive = false;
             this.setHoveredNode(null);
             this.requestFrame();
             return;
@@ -1309,6 +1573,7 @@ class AtlasController {
         if (candidates.length === 0) {
             return;
         }
+        this.keyboardSelectionActive = true;
         const origin = this.selectedNode && candidates.includes(this.selectedNode)
             ? this.selectedNode
             : null;
@@ -1366,7 +1631,7 @@ class AtlasController {
     }
 
     positionTooltip() {
-        const node = this.hoveredNode ?? (this.canvas.matches(":focus-visible")
+        const node = this.hoveredNode ?? (this.keyboardSelectionActive
             ? this.selectedNode
             : null);
         if (!node || !this.visibleNodes.includes(node)) {
@@ -1489,7 +1754,11 @@ class IconCache {
     }
 }
 
-function readTestConfiguration() {
+function readTestConfiguration(testFeaturesEnabled) {
+    if (!testFeaturesEnabled) {
+        return { enabled: false, count: 0, seed: "mmm-atlas" };
+    }
+
     const parameters = new URLSearchParams(window.location.search);
     const countValue = parameters.get("atlasTestPoints")
         ?? parameters.get("testPoints");
@@ -1528,13 +1797,13 @@ function readPalette() {
     const styles = getComputedStyle(document.documentElement);
     const value = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
     return {
-        micro: value("--micro", "#f05a47"),
-        meso: value("--meso", "#e9b949"),
-        macro: value("--macro", "#5bc1a9"),
-        "micro-meso": "#ef8650",
-        "micro-macro": "#bd7870",
-        "meso-macro": "#a8bd72",
-        balanced: "#c7c8c2",
+        micro: value("--micro", "#fb6069"),
+        meso: value("--meso", "#75fb60"),
+        macro: value("--macro", "#607cfb"),
+        "micro-meso": value("--micro-meso", "#fff556"),
+        "micro-macro": value("--micro-macro", "#d67eff"),
+        "meso-macro": value("--macro-meso", "#4ffdff"),
+        balanced: value("--all-axes", "#ffffff"),
         surface: value("--surface", "#171923"),
         text: value("--text", "#f3f1e9"),
         line: "rgba(255, 255, 255, 0.48)"

@@ -34,8 +34,8 @@ dotnet --version
 dotnet restore MMMAtlas.sln
 dotnet tool restore
 dotnet user-secrets --project MMMAtlas/MMMAtlas.csproj set "Steam:ApiKey" "<your-key>"
-dotnet build MMMAtlas.sln
-dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
+dotnet build MMMAtlas.sln -c Development
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Development --launch-profile http
 ```
 
 Replace `<repository-url>` with the repository's Git URL.
@@ -43,8 +43,8 @@ Replace `<repository-url>` with the repository's Git URL.
 Open [http://localhost:5163](http://localhost:5163). The home page contains a
 development panel that calls the game list, detail, image, and vote APIs.
 
-The launch profile sets `ASPNETCORE_ENVIRONMENT=Development`. Development mode
-automatically:
+The launch profile sets `ASPNETCORE_ENVIRONMENT=Development`. The Development
+build automatically:
 
 1. Creates `MMMAtlas/App_Data/mmm-atlas-development.db`.
 2. Applies the schema in `SQLiteTableSchemas.sql`.
@@ -55,12 +55,34 @@ Git.
 The frontend reads rated games and votes from the main application tables.
 Development seed data is not loaded by default.
 
+## Build modes
+
+Application behavior is selected at compile time rather than inferred from
+`ASPNETCORE_ENVIRONMENT`:
+
+| Configuration | Debug | Database | Test features |
+| --- | --- | --- | --- |
+| `Development` | Enabled | `mmm-atlas-development.db` | Enabled |
+| `Test` | Disabled, optimized | `mmm-atlas-development.db` | Enabled |
+| `Production` | Disabled, optimized | `mmm-atlas.db` | Disabled |
+
+`Debug` remains a compatibility alias for `Development`, and `Release` remains
+an alias for `Production`. New commands and deployment configuration should use
+the explicit names above. The central `AtlasBuildPolicy` is the gate for future
+test-only features; do not use the runtime environment as a feature flag.
+
+Build a production artifact with:
+
+```powershell
+dotnet publish MMMAtlas/MMMAtlas.csproj -c Production
+```
+
 To opt into the retained seed script for UI testing, set the development
 configuration flag before starting the application:
 
 ```powershell
 $env:DevelopmentData__SeedOnStartup = "true"
-dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Development --launch-profile http
 ```
 
 The idempotent `MMMAtlas/Data/DevelopmentSeed.sql` script loads four games with
@@ -73,14 +95,15 @@ the normal startup behavior.
 Launch the home-page Canvas with 3,000 deterministic synthetic points:
 
 ```powershell
-dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile canvas-test
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Test --launch-profile canvas-test
 ```
 
 The test launch opens on port 5164 and exposes point-count and random-seed
 controls above the Canvas. Applying the controls updates the current URL, so a
 specific distribution can be reloaded or shared locally.
 
-Test mode can also be enabled on any launch with these query parameters:
+Test mode can also be enabled in Development and Test builds with these query
+parameters:
 
 ```text
 ?atlasTest=1&atlasTestPoints=3000&atlasTestSeed=launch
@@ -89,7 +112,8 @@ Test mode can also be enabled on any launch with these query parameters:
 `atlasTestPoints` accepts 0 through 20,000. Synthetic points use the normal
 filter, hover, zoom, collision, density, and icon-loading paths, but they never
 call the game-detail API or appear in the accessible real-game result list.
-Omit the parameters to keep the test controls hidden.
+Omit the parameters to keep the test controls hidden. Production builds omit
+the controls and ignore all test-mode query parameters.
 
 ## HTTPS development
 
@@ -98,7 +122,7 @@ HTTPS is optional for the current local API and UI work. To use it, trust the
 
 ```powershell
 dotnet dev-certs https --trust
-dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile https
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Development --launch-profile https
 ```
 
 Then open [https://localhost:7176](https://localhost:7176).
@@ -109,14 +133,14 @@ configuration. The HTTP launch profile remains available.
 ## Run tests
 
 ```powershell
-dotnet test MMMAtlas.sln
+dotnet test MMMAtlas.sln -c Test
 ```
 
 To build and test without restoring packages again:
 
 ```powershell
-dotnet build MMMAtlas.sln --no-restore
-dotnet test MMMAtlas.sln --no-build --no-restore
+dotnet build MMMAtlas.sln -c Test --no-restore
+dotnet test MMMAtlas.sln -c Test --no-build --no-restore
 ```
 
 ## Reset the development data
@@ -129,7 +153,7 @@ PowerShell:
 Remove-Item -LiteralPath MMMAtlas/App_Data/mmm-atlas-development.db -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath MMMAtlas/App_Data/mmm-atlas-development.db-shm -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath MMMAtlas/App_Data/mmm-atlas-development.db-wal -ErrorAction SilentlyContinue
-dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Development --launch-profile http
 ```
 
 Bash:
@@ -138,7 +162,7 @@ Bash:
 rm -f MMMAtlas/App_Data/mmm-atlas-development.db
 rm -f MMMAtlas/App_Data/mmm-atlas-development.db-shm
 rm -f MMMAtlas/App_Data/mmm-atlas-development.db-wal
-dotnet run --project MMMAtlas/MMMAtlas.csproj --launch-profile http
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Development --launch-profile http
 ```
 
 The next Development startup recreates the schema. It remains empty unless
@@ -159,3 +183,21 @@ The application requires a Steam Web API key at startup. Store it under
 `Steam:ApiKey` with .NET user-secrets for local development, as shown above,
 and use the deployment platform's secret store in production. Do not put the
 key in an appsettings file or commit it to source control.
+
+
+
+## Current TODO:
+- Styling for _GameDetailDialog.cshtml, _VoteDialog.cshtml, and Dashboard.cshtml (by Mias)
+- extra filters: release year, publisher?, developer?, steam genre labels?, number of votes, f2p vs paid
+- ~~move data collection opt-in after login~~
+- ~~restrict UI test mode to development build~~
+- ~~hover over description for the 3 axis ~~ Strategic shape
+- ~~match meso and macro color to the video~~
+- standalone page for the atlas (linked from header and main page)
+- ~~icons for each axis (e.g. fps for micro, rock paper scissors for meso, chess for macro)?~~
+- live updates to atlas?
+- ~~add video embed to home page~~
+
+- buy domain
+- host on Azure
+- load testing for 1800 users over 2 weeks (* some kind of multiplier, since I'd expect more engagement than the ko-fi)
