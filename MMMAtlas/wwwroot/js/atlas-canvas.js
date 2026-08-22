@@ -5,10 +5,9 @@ import {
     atlasCircleRadius,
     atlasViewBounds,
     atlasViewCenter,
+    blendAxisColor,
     calculateAtlasRenderStyle,
     createRandomRatioDistributions,
-    dominantCategory,
-    membershipCategory,
     normalizeRatios,
     projectRatios,
     relaxPoints,
@@ -387,8 +386,6 @@ class AtlasController {
                 present: true,
                 test: isTest,
                 filteredIn: true,
-                category: dominantCategory(ratios),
-                membership: membershipCategory(ratios),
                 offsets: new Map(),
                 screenX: 0,
                 screenY: 0,
@@ -407,8 +404,6 @@ class AtlasController {
             node.test = isTest;
             node.targetWorldX = projected.x;
             node.targetWorldY = projected.y;
-            node.category = dominantCategory(ratios);
-            node.membership = membershipCategory(ratios);
             if (this.reducedMotion.matches) {
                 node.worldX = projected.x;
                 node.worldY = projected.y;
@@ -1665,9 +1660,7 @@ class AtlasController {
     }
 
     colorFor(node) {
-        return this.palette[node.membership]
-            ?? this.palette[node.category]
-            ?? this.palette.balanced;
+        return blendAxisColor(node.ratios, this.palette.axisColors);
     }
 
     formatRatios(node) {
@@ -1796,17 +1789,37 @@ async function fetchJson(url) {
 function readPalette() {
     const styles = getComputedStyle(document.documentElement);
     const value = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
+    const axisColor = (name, fallback) => {
+        const css = value(name, fallback);
+        return { css, rgb: parseHexColor(css) ?? parseHexColor(fallback) };
+    };
+    const micro = axisColor("--micro", "#fb6069");
+    const meso = axisColor("--meso", "#75fb60");
+    const macro = axisColor("--macro", "#607cfb");
+
     return {
-        micro: value("--micro", "#fb6069"),
-        meso: value("--meso", "#75fb60"),
-        macro: value("--macro", "#607cfb"),
-        "micro-meso": value("--micro-meso", "#fff556"),
-        "micro-macro": value("--micro-macro", "#d67eff"),
-        "meso-macro": value("--macro-meso", "#4ffdff"),
-        balanced: value("--all-axes", "#ffffff"),
+        micro: micro.css,
+        meso: meso.css,
+        macro: macro.css,
+        axisColors: { micro: micro.rgb, meso: meso.rgb, macro: macro.rgb },
         surface: value("--surface", "#171923"),
         text: value("--text", "#f3f1e9"),
         line: "rgba(255, 255, 255, 0.48)"
+    };
+}
+
+function parseHexColor(value) {
+    const match = /^#([\da-f]{3}|[\da-f]{6})$/i.exec(value);
+    if (!match) {
+        return null;
+    }
+    const hex = match[1].length === 3
+        ? [...match[1]].map((channel) => channel + channel).join("")
+        : match[1];
+    return {
+        red: Number.parseInt(hex.slice(0, 2), 16),
+        green: Number.parseInt(hex.slice(2, 4), 16),
+        blue: Number.parseInt(hex.slice(4, 6), 16)
     };
 }
 

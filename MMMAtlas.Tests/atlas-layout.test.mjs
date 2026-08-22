@@ -71,8 +71,8 @@ test("places pure axis anchors on the outward edge of each circle", () => {
     }
 });
 
-test("aligns 20 percent membership transitions with circle overlap", () => {
-    assert.equal(layout.membershipCutoff, 0.2);
+test("aligns 20 percent geometric transitions with circle overlap", () => {
+    const geometricCutoff = 0.2;
     const axes = ["micro", "meso", "macro"];
 
     for (const primary of axes) {
@@ -81,8 +81,8 @@ test("aligns 20 percent membership transitions with circle overlap", () => {
                 continue;
             }
             const ratios = { micro: 0, meso: 0, macro: 0 };
-            ratios[primary] = 1 - layout.membershipCutoff;
-            ratios[secondary] = layout.membershipCutoff;
+            ratios[primary] = 1 - geometricCutoff;
+            ratios[secondary] = geometricCutoff;
             const point = layout.projectRatios(ratios);
             const circle = layout.atlasCircleCenters[secondary];
             const boundaryError = Math.abs(
@@ -102,12 +102,21 @@ test("increasing Micro moves a point monotonically toward the Micro anchor", () 
     assert.ok(distance(higher) < distance(lower));
 });
 
-test("classifies dominant and cutoff-based memberships", () => {
-    assert.equal(layout.dominantCategory({ micro: 0.7, meso: 0.2, macro: 0.1 }), "micro");
-    assert.equal(layout.dominantCategory({ micro: 0.4, meso: 0.3, macro: 0.3 }), "mixed");
-    assert.equal(layout.membershipCategory({ micro: 0.8, meso: 0.2, macro: 0 }), "micro-meso");
-    assert.equal(layout.membershipCategory({ micro: 0.81, meso: 0.19, macro: 0 }), "micro");
-    assert.equal(layout.membershipCategory({ micro: 0.34, meso: 0.33, macro: 0.33 }), "balanced");
+test("blends axis colors continuously from the ratios", () => {
+    const colors = {
+        micro: { red: 251, green: 96, blue: 105 },
+        meso: { red: 117, green: 251, blue: 96 },
+        macro: { red: 96, green: 124, blue: 251 }
+    };
+    assert.equal(
+        layout.blendAxisColor({ micro: 1, meso: 0, macro: 0 }, colors),
+        "rgb(251, 96, 105)");
+    assert.equal(
+        layout.blendAxisColor({ micro: 0.9, meso: 0.1, macro: 0 }, colors),
+        "rgb(238, 112, 104)");
+    assert.equal(
+        layout.blendAxisColor({ micro: 1 / 3, meso: 1 / 3, macro: 1 / 3 }, colors),
+        "rgb(155, 157, 151)");
 });
 
 test("adapts point size and icon visibility to density and zoom", () => {

@@ -6,7 +6,6 @@ export const atlasCircleCenters = Object.freeze({
     macro: Object.freeze({ x: 0.6, y: 0.665 })
 });
 export const atlasCircleRadius = 0.49;
-export const membershipCutoff = 0.2;
 
 const atlasCenter = Object.freeze({
     x: (atlasCircleCenters.micro.x
@@ -84,20 +83,14 @@ function createOuterAnchor(circleCenter) {
     });
 }
 
-export function dominantCategory(ratios) {
-    const entries = [
-        ["micro", ratios.micro],
-        ["meso", ratios.meso],
-        ["macro", ratios.macro]
-    ].sort((left, right) => right[1] - left[1]);
+export function blendAxisColor(ratios, colors) {
+    const axes = ["micro", "meso", "macro"];
+    const total = axes.reduce((sum, axis) => sum + ratios[axis], 0);
+    const channel = (name) => Math.round(axes.reduce(
+        (sum, axis) => sum + ratios[axis] * colors[axis][name],
+        0) / total);
 
-    return entries[0][1] >= 0.5 ? entries[0][0] : "mixed";
-}
-
-export function membershipCategory(ratios, cutoff = membershipCutoff) {
-    const included = ["micro", "meso", "macro"]
-        .filter((axis) => ratios[axis] >= cutoff);
-    return included.length === 3 ? "balanced" : included.join("-") || "balanced";
+    return `rgb(${channel("red")}, ${channel("green")}, ${channel("blue")})`;
 }
 
 export function calculateAtlasRenderStyle(pointCount, zoom) {
