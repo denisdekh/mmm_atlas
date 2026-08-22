@@ -115,6 +115,113 @@ call the game-detail API or appear in the accessible real-game result list.
 Omit the parameters to keep the test controls hidden. Production builds omit
 the controls and ignore all test-mode query parameters.
 
+## API performance profiling
+
+`MMMAtlas.Profiler` simulates persistent concurrent clients against a running
+Kestrel server. Reader clients poll the atlas and occasionally open a game and
+its public-vote list. Writer clients authenticate as seeded users, submit votes,
+and amend them repeatedly. Each run produces a standalone HTML report containing
+failure rate, throughput, latency percentiles, endpoint breakdowns, response
+volume, status/error groups, process CPU and memory, and a post-run vote-aggregate
+consistency check.
+
+Profiler authentication and consistency routes are tied to `AtlasBuildPolicy`.
+They are available only in Development and Test builds, are disabled by default,
+and require an access token of at least 16 UTF-8 bytes. Production builds never
+map these routes, even if profiler settings are supplied.
+
+Start a Test server in one terminal:
+
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+$env:Steam__ApiKey = "local-profiler-placeholder"
+$env:ApiProfiler__Enabled = "true"
+$env:ApiProfiler__AccessToken = "replace-with-a-local-random-token"
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Test --launch-profile http
+```
+
+Use a placeholder Steam key only for a seeded local profile. Use the normal
+secret-store key when the scenario involves Steam API calls.
+
+Run the profiler from a second terminal with the same token:
+
+```powershell
+$env:MMM_ATLAS_PROFILER_TOKEN = "replace-with-a-local-random-token"
+dotnet run --project MMMAtlas.Profiler/MMMAtlas.Profiler.csproj -c Test -- `
+  --base-url http://localhost:5163 `
+  --connections 100 `
+  --writer-ratio 10% `
+  --duration-seconds 120 `
+  --database-mode seed `
+  --target-games 1000 `
+  --target-users 1000 `
+  --target-votes 5000 `
+  --output artifacts/api-profile.html
+```
+
+When `ApiProfiler:Enabled` is true in a Development or Test build, the whole
+application uses the dedicated `ConnectionStrings:MMMAtlasProfiler` SQLite file
+(`App_Data/mmm-atlas-profiler.db` by default). Startup rejects a profiler
+connection that resolves to either the normal Development or Production file.
+Profiler setup therefore cannot clear or seed the application's ordinary data.
+
+The default `seed` database mode clears the dedicated file's rows and creates
+exact targets of 1,000 games, 1,000 users, and 5,000 unique votes. Synthetic
+games include representative names, descriptions, developer, publisher, genre,
+Steam metadata, and blob-backed SVG, atlas-icon, and library-card placeholders;
+votes are deterministic and their aggregates are rebuilt before traffic starts.
+Targets may each be set from 0 through 10,000. To measure
+an empty-atlas read workload, use `--database-mode empty --writer-ratio 0`.
+
+`grow` mode measures the application while its database changes size. It resets
+and prepopulates `--initial-games`, then reserves `--game-writer-ratio` of writer
+clients for calls to the gated profiler game-creation endpoint until
+`--target-games` is reached. Those calls atomically add synthetic Steam/store
+data, library ownership, image blobs, a first vote, and its aggregate without
+contacting Steam or its CDN. Other writer clients continue submitting and
+changing votes while readers poll the growing atlas and fetch game details,
+votes, icons, and library cards. For example:
+
+```powershell
+dotnet run --project MMMAtlas.Profiler/MMMAtlas.Profiler.csproj -c Test -- `
+  --database-mode grow `
+  --initial-games 1000 --target-games 2000 `
+  --target-users 1500 --target-votes 5000 `
+  --connections 100 --writer-ratio 20% --game-writer-ratio 25%
+```
+
+By default, the game-creation cadence is calculated so growth spans roughly 90%
+of the measured duration; override it with
+`--game-creation-interval-seconds`. The HTML report plots game count over time
+and groups failure and latency percentiles into database-size bands. A grow run
+returns a nonzero exit code if it cannot reach the target within the configured
+duration; that is a useful capacity result rather than silently extending the
+measurement window.
+`--database-mode keep` skips setup and runs against the dedicated file exactly
+as the previous profile left it. Writer activity persists in that file; the
+next `seed`, `grow`, or `empty` run clears it.
+
+The total client count and writer/reader ratio are controlled by
+`--connections` and `--writer-ratio`. Run with `--help` for cadence, timeout,
+seed, HTTPS, user-ID, and server-process controls. Pass the API server PID with
+`--server-pid` to add server CPU, working set, private memory, and thread counts;
+the load generator is always sampled.
+
+The reader default follows the current browser UI: every graph viewer requests
+`/api/games/atlas` once every 45 seconds. The steady core reading load is thus:
+
+```text
+atlas polls/second = reader clients / 45
+```
+
+With the default 100 clients and 10% writers, 90 readers produce 2 atlas polls
+per second. Occasional game-detail behavior (20% of poll cycles, four requests
+for detail, public votes, atlas icon, and library card) raises the calculated
+default to 3.6 total reader requests per second. Both expected values are printed
+before a run and recorded in the HTML report. For the 1,800-user planning
+scenario, a 5% writer ratio gives 1,710 readers, or 38 steady atlas polls per
+second before detail views.
+
 ## HTTPS development
 
 HTTPS is optional for the current local API and UI work. To use it, trust the
@@ -188,12 +295,12 @@ key in an appsettings file or commit it to source control.
 
 ## Current TODO:
 - Styling for _GameDetailDialog.cshtml, _VoteDialog.cshtml, and Dashboard.cshtml (by Mias)
-- extra filters: release year, publisher?, developer?, steam genre labels?, number of votes, f2p vs paid
+- ~~extra filters: release year, publisher?, developer?, steam genre labels?, number of votes, f2p vs paid~~
 - ~~move data collection opt-in after login~~
 - ~~restrict UI test mode to development build~~
-- ~~hover over description for the 3 axis ~~ Strategic shape
+- ~~hover over description for the 3 axis ~~
 - ~~match meso and macro color to the video~~
-- standalone page for the atlas (linked from header and main page)
+- ~~standalone page for the atlas (linked from header and main page)~~
 - ~~icons for each axis (e.g. fps for micro, rock paper scissors for meso, chess for macro)?~~
 - live updates to atlas?
 - ~~add video embed to home page~~
