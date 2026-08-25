@@ -80,13 +80,13 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
-    public async Task HomePageOnlyExposesTestFeaturesWhenBuildAllowsThem()
+    public async Task AtlasPageOnlyExposesTestFeaturesWhenBuildAllowsThem()
     {
         await using var factory = new AtlasApplicationFactory();
         using var client = factory.CreateClient();
 
         var html = await client.GetStringAsync(
-            "/?atlasTest=1&atlasTestPoints=3000");
+            "/atlas?atlasTest=1&atlasTestPoints=3000");
         var expectedValue = AtlasBuildPolicy.Current.TestFeaturesEnabled
             .ToString()
             .ToLowerInvariant();

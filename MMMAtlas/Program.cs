@@ -131,12 +131,25 @@ builder.Services
         };
     });
 
+var profilerEnabled = buildPolicy.TestFeaturesEnabled
+    && builder.Configuration.GetValue<bool>("ApiProfiler:Enabled");
+var databaseConnectionName = profilerEnabled
+    ? "MMMAtlasProfiler"
+    : buildPolicy.DatabaseConnectionName;
 var connectionString =
-    builder.Configuration.GetConnectionString(
-        buildPolicy.DatabaseConnectionName)
+    builder.Configuration.GetConnectionString(databaseConnectionName)
     ?? throw new InvalidOperationException(
-        $"Connection string '{buildPolicy.DatabaseConnectionName}' "
+        $"Connection string '{databaseConnectionName}' "
         + "is not configured.");
+
+if (profilerEnabled)
+{
+    ProfilerDatabaseSeeder.EnsureDedicatedConnection(
+        connectionString,
+        builder.Configuration.GetConnectionString("MMMAtlasDevelopment"),
+        builder.Configuration.GetConnectionString("MMMAtlasProduction"),
+        builder.Environment.ContentRootPath);
+}
 
 var database = DatabaseConnection.Create(
     connectionString,
@@ -178,7 +191,7 @@ if (buildPolicy.UsesDevelopmentDatabase)
 {
     await DevelopmentDatabase.InitializeAsync(
         database,
-        builder.Configuration.GetValue<bool>(
+        !profilerEnabled && builder.Configuration.GetValue<bool>(
             "DevelopmentData:SeedOnStartup"));
 }
 
@@ -186,6 +199,7 @@ app.MapStaticAssets();
 app.MapGameEndpoints();
 app.MapSteamAccountEndpoints();
 app.MapVoteEndpoints();
+app.MapProfilerEndpoints(buildPolicy, builder.Configuration);
 app.MapControllers();
 app.MapRazorPages()
     .WithStaticAssets();

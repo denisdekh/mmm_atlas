@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MMMAtlas", "MMMAtlas\MMMAtl
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MMMAtlas.Tests", "MMMAtlas.Tests\MMMAtlas.Tests.csproj", "{2BDB70C7-B309-4E2F-94E5-2762CF4A5FC1}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MMMAtlas.Profiler", "MMMAtlas.Profiler\MMMAtlas.Profiler.csproj", "{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Development|Any CPU = Development|Any CPU
@@ -62,6 +64,24 @@ Global
 		{2BDB70C7-B309-4E2F-94E5-2762CF4A5FC1}.Release|x86.Build.0 = Release|Any CPU
 		{2BDB70C7-B309-4E2F-94E5-2762CF4A5FC1}.Test|Any CPU.ActiveCfg = Test|Any CPU
 		{2BDB70C7-B309-4E2F-94E5-2762CF4A5FC1}.Test|Any CPU.Build.0 = Test|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Development|Any CPU.ActiveCfg = Development|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Development|Any CPU.Build.0 = Development|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Debug|Any CPU.ActiveCfg = Development|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Debug|Any CPU.Build.0 = Development|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Debug|x64.ActiveCfg = Development|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Debug|x64.Build.0 = Development|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Debug|x86.ActiveCfg = Development|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Debug|x86.Build.0 = Development|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Production|Any CPU.ActiveCfg = Production|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Production|Any CPU.Build.0 = Production|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Release|Any CPU.ActiveCfg = Production|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Release|Any CPU.Build.0 = Production|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Release|x64.ActiveCfg = Production|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Release|x64.Build.0 = Production|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Release|x86.ActiveCfg = Production|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Release|x86.Build.0 = Production|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Test|Any CPU.ActiveCfg = Test|Any CPU
+		{B6BDFE4A-D33F-4818-BDC0-A3346705D5CB}.Test|Any CPU.Build.0 = Test|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
