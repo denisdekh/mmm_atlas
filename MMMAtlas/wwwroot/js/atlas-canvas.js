@@ -14,6 +14,7 @@ import {
     selectSpatialRepresentatives
 } from "./atlas-layout.js";
 import { buildFeatures } from "./build-features.js";
+import { AtlasLiveUpdates } from "./atlas-live-updates.js";
 import {
     collectAtlasFilterOptions,
     matchesAtlasFilters,
@@ -23,7 +24,6 @@ import {
 
 const minimumZoom = 0.75;
 const maximumZoom = 36;
-const pollIntervalMilliseconds = 45_000;
 const maximumTestPoints = 20_000;
 const testIconUrl = "/images/atlas-test-icon.svg";
 const iconTiers = Object.freeze({
@@ -108,6 +108,9 @@ class AtlasController {
         this.relaxAll = false;
         this.pendingRelaxNode = null;
         this.polling = false;
+        this.liveUpdates = new AtlasLiveUpdates(
+            (gameId) => this.refreshOne(gameId),
+            (options) => this.refreshAll(options));
         this.testFeaturesEnabled = buildFeatures.testFeaturesEnabled;
         this.testConfiguration = readTestConfiguration(
             this.testFeaturesEnabled);
@@ -136,13 +139,7 @@ class AtlasController {
         this.resizeObserver.observe(this.stage);
         this.resize();
         await this.refreshAll({ initial: true });
-        window.setInterval(() => {
-            if (!document.hidden) {
-                this.refreshAll({ quiet: true }).catch(() => {
-                    // The existing scene remains usable while a refresh is unavailable.
-                });
-            }
-        }, pollIntervalMilliseconds);
+        this.liveUpdates.start();
     }
 
     bindEvents() {
@@ -217,16 +214,14 @@ class AtlasController {
         }, { passive: true });
 
         document.addEventListener("mmm-atlas:vote-submitted", (event) => {
-            this.refreshOne(event.detail.gameId).catch(() => {
-                // The next background refresh will reconcile a transient failure.
-            });
+            this.liveUpdates.queueGameRefresh(event.detail?.gameId);
         });
         document.addEventListener("mmm-atlas:game-updated", (event) => {
             if (event.detail?.game) {
                 this.upsertGame(event.detail.game, { animate: true });
                 this.applyFilters();
             } else if (event.detail?.gameId) {
-                this.refreshOne(event.detail.gameId).catch(() => {});
+                this.liveUpdates.queueGameRefresh(event.detail.gameId);
             }
         });
         document.addEventListener("keydown", (event) => {

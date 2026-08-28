@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
+using MMMAtlas.AtlasEvents;
 using MMMAtlas.Steam;
 using MMMAtlas.Voting;
 
@@ -45,6 +46,8 @@ public static class VoteEndpoints
         HttpContext httpContext,
         IAntiforgery antiforgery,
         VotingManager manager,
+        AtlasEventBroadcaster broadcaster,
+        ILogger<AtlasEventBroadcaster> logger,
         CancellationToken cancellationToken)
     {
         await antiforgery.ValidateRequestAsync(httpContext);
@@ -108,16 +111,35 @@ public static class VoteEndpoints
             });
         }
 
-        return result is null
-            ? Results.Problem(
+        if (result is null)
+        {
+            return Results.Problem(
                 statusCode: StatusCodes.Status404NotFound,
-                title: "Game not found")
-            : Results.Ok(new VoteResponse(
-                result.Scores.MicroScore,
-                result.Scores.MesoScore,
-                result.Scores.MacroScore,
-                result.Scores.IsPublic,
-                result.Amended));
+                title: "Game not found");
+        }
+
+        // The database transaction has committed before this best-effort,
+        // non-blocking notification. Slow or disconnected viewers cannot hold up
+        // the vote request, and the authoritative game endpoint remains the source
+        // of truth if a notification is missed.
+        try
+        {
+            broadcaster.PublishGameUpdated(gameId);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "The vote for game {GameId} committed, but its atlas update notification failed.",
+                gameId);
+        }
+
+        return Results.Ok(new VoteResponse(
+            result.Scores.MicroScore,
+            result.Scores.MesoScore,
+            result.Scores.MacroScore,
+            result.Scores.IsPublic,
+            result.Amended));
     }
 
     private static async Task<(AtlasIcon? Icon, string? Error)>

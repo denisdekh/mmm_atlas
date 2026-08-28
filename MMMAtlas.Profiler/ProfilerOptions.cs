@@ -290,7 +290,7 @@ internal sealed record ProfilerOptions
           --writer-ratio R                Writers as 0..1 or percent, e.g. 0.1 or 10%
           --duration-seconds N            Total run duration (default 120)
           --ramp-up-seconds N             Client start ramp (default 10)
-          --reader-poll-seconds N         Atlas poll cadence (default 45, matching UI)
+          --reader-poll-seconds N         Fallback atlas poll cadence (default 45)
           --detail-probability R          Chance each poll also opens game + votes (default 20%)
           --writer-interval-seconds N     Vote/change cadence per writer (default 15)
           --game-writer-ratio R           Share of writers creating games in grow mode
@@ -321,7 +321,7 @@ internal sealed record ProfilerOptions
           --insecure                      Accept an invalid development HTTPS certificate
           --help                          Show this help
 
-        The default reader load is calculated from the UI's 45-second polling cadence:
+        The default reader load models the UI's 45-second fallback polling cadence:
         reader clients / 45 = steady atlas polls per second. Occasional detail views add
         game, vote, atlas-icon, and library-card requests on 20% of polls.
         """;

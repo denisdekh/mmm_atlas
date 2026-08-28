@@ -43,6 +43,7 @@ builder.Services.AddHttpClient("SteamLibraryImages", client =>
 .RemoveAllLoggers();
 builder.Services.AddScoped<SteamAuthenticationManager>();
 builder.Services.AddScoped<VotingManager>();
+builder.Services.AddSingleton<MMMAtlas.AtlasEvents.AtlasEventBroadcaster>();
 
 builder.Services
     .AddAuthentication(options =>
@@ -197,6 +198,7 @@ if (buildPolicy.UsesDevelopmentDatabase)
 
 app.MapStaticAssets();
 app.MapGameEndpoints();
+app.MapAtlasEventEndpoints();
 app.MapSteamAccountEndpoints();
 app.MapVoteEndpoints();
 app.MapProfilerEndpoints(buildPolicy, builder.Configuration);

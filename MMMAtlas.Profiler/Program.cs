@@ -33,7 +33,7 @@ if (options.GameCreatorClients > 0)
         + $"at {options.GameCreationInterval.TotalSeconds:0.###}s per creator request.");
 }
 Console.WriteLine(
-    $"UI-equivalent atlas load: {options.ReaderClients} / "
+    $"Fallback atlas polling load: {options.ReaderClients} / "
     + $"{options.ReaderPollInterval.TotalSeconds:0.###}s = "
     + $"{options.ExpectedAtlasPollsPerSecond:0.###} polls/s; "
     + $"expected total reader traffic {options.ExpectedReaderRequestsPerSecond:0.###} requests/s.");

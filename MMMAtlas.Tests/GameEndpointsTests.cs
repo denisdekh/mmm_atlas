@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using MMMAtlas.AtlasEvents;
 using MMMAtlas.Configuration;
 using MMMAtlas.Data;
 using MMMAtlas.Steam;
@@ -372,6 +373,53 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
+    public async Task AtlasEventsIsAStreamingPublicEndpoint()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        var broadcaster = factory.Services
+            .GetRequiredService<AtlasEventBroadcaster>();
+        using var cancellation = new CancellationTokenSource(
+            TimeSpan.FromSeconds(5));
+
+        using var response = await client.GetAsync(
+            "/api/atlas/events",
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellation.Token);
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(
+            "text/event-stream",
+            response.Content.Headers.ContentType?.MediaType);
+        Assert.IsTrue(response.Headers.CacheControl?.NoCache);
+        Assert.IsTrue(response.Headers.TryGetValues(
+            "X-Accel-Buffering",
+            out var bufferingValues));
+        CollectionAssert.Contains(bufferingValues.ToArray(), "no");
+
+        await using var stream = await response.Content.ReadAsStreamAsync(
+            cancellation.Token);
+        using var reader = new StreamReader(stream);
+        Assert.AreEqual(
+            ": connected",
+            await reader.ReadLineAsync(cancellation.Token));
+        Assert.AreEqual(
+            string.Empty,
+            await reader.ReadLineAsync(cancellation.Token));
+        Assert.AreEqual(1, broadcaster.SubscriberCount);
+
+        cancellation.Cancel();
+        response.Dispose();
+        for (var attempt = 0;
+            attempt < 50 && broadcaster.SubscriberCount != 0;
+            attempt++)
+        {
+            await Task.Delay(10);
+        }
+        Assert.AreEqual(0, broadcaster.SubscriberCount);
+    }
+
+    [TestMethod]
     public async Task GetOwnedGamesRequiresAuthentication()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -412,6 +460,9 @@ public sealed class GameEndpointsTests
         await using var factory = new AtlasApplicationFactory();
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        var broadcaster = factory.Services
+            .GetRequiredService<AtlasEventBroadcaster>();
+        using var subscription = broadcaster.Subscribe();
 
         var response = await client.PostAsync(
             "/api/me/votes/1",
@@ -432,6 +483,11 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(3.3m, submitted.MacroScore);
         Assert.IsTrue(submitted.IsPublic);
         Assert.IsTrue(submitted.Amended);
+        using var eventTimeout = new CancellationTokenSource(
+            TimeSpan.FromSeconds(1));
+        Assert.AreEqual(
+            AtlasEvent.GameUpdated(1),
+            await subscription.Reader.ReadAsync(eventTimeout.Token));
 
         var votes = await client.GetFromJsonAsync<VoteResponse[]>(
             "/api/games/1/votes");
@@ -448,6 +504,9 @@ public sealed class GameEndpointsTests
         await using var factory = new AtlasApplicationFactory();
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        var broadcaster = factory.Services
+            .GetRequiredService<AtlasEventBroadcaster>();
+        using var subscription = broadcaster.Subscribe();
 
         var response = await client.PostAsync(
             "/api/me/votes/2",
@@ -466,6 +525,30 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(
             HttpStatusCode.NotFound,
             (await client.GetAsync("/api/games/2/atlas-icon")).StatusCode);
+        Assert.IsFalse(subscription.Reader.TryRead(out _));
+    }
+
+    [TestMethod]
+    public async Task SubmitVoteForMissingGameDoesNotPublishAtlasEvent()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        var broadcaster = factory.Services
+            .GetRequiredService<AtlasEventBroadcaster>();
+        using var subscription = broadcaster.Subscribe();
+
+        var response = await client.PostAsync(
+            "/api/me/votes/999",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["microScore"] = "5.0",
+                ["mesoScore"] = "5.0",
+                ["macroScore"] = "5.0"
+            }));
+
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.IsFalse(subscription.Reader.TryRead(out _));
     }
 
     [TestMethod]
@@ -518,6 +601,9 @@ public sealed class GameEndpointsTests
                 AllowAutoRedirect = false
             });
         client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        var broadcaster = factory.Services
+            .GetRequiredService<AtlasEventBroadcaster>();
+        using var subscription = broadcaster.Subscribe();
 
         var response = await client.PostAsync(
             "/api/me/votes/private",
@@ -533,6 +619,9 @@ public sealed class GameEndpointsTests
         Assert.IsNotNull(votes);
         Assert.IsNull(votes[0].PublicProfileName);
         Assert.AreEqual(8, votes[0].MicroScore);
+        // Vote privacy controls voter attribution. It intentionally does not
+        // remove the vote from the public aggregate used by the atlas graph.
+        Assert.IsFalse(subscription.Reader.TryRead(out _));
     }
 
     private sealed record VoteResponse(

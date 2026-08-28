@@ -207,8 +207,9 @@ seed, HTTPS, user-ID, and server-process controls. Pass the API server PID with
 `--server-pid` to add server CPU, working set, private memory, and thread counts;
 the load generator is always sampled.
 
-The reader default follows the current browser UI: every graph viewer requests
-`/api/games/atlas` once every 45 seconds. The steady core reading load is thus:
+The profiler's reader workload models the browser's fallback/recovery path:
+every graph viewer requests `/api/games/atlas` once every 45 seconds. The steady
+fallback reading load is thus:
 
 ```text
 atlas polls/second = reader clients / 45
@@ -219,8 +220,31 @@ per second. Occasional game-detail behavior (20% of poll cycles, four requests
 for detail, public votes, atlas icon, and library card) raises the calculated
 default to 3.6 total reader requests per second. Both expected values are printed
 before a run and recorded in the HTML report. For the 1,800-user planning
-scenario, a 5% writer ratio gives 1,710 readers, or 38 steady atlas polls per
-second before detail views.
+scenario, a 5% writer ratio gives 1,710 readers, or 38 fallback atlas polls per
+second before detail views. Under normal browser operation, the atlas loads the
+list once, holds one `/api/atlas/events` SSE connection, and fetches only the
+changed game from `/api/games/{gameId}` after a `game-updated` event.
+
+## Live atlas events
+
+`GET /api/atlas/events` is a public Server-Sent Events stream. It sends a
+`game-updated` event with JSON such as `{ "gameId": 123 }` after a successful
+vote commits, plus a comment heartbeat every 15 seconds. The event is only an
+invalidation notice; clients fetch authoritative data from the individual-game
+API. Manual Refresh remains available, and browsers fall back to 45-second
+whole-atlas polling while SSE is unavailable or disconnected.
+
+The in-process broadcaster reaches only SSE clients connected to the same
+application instance. A multi-instance deployment needs a shared backplane or
+broker (or instance affinity with an accepted possibility of missed events).
+Because reconnect recovery refreshes the atlas, missed notifications do not
+permanently leave a viewer stale.
+
+Reverse proxies must allow long-lived streaming responses, avoid buffering
+`text/event-stream`, and use idle timeouts longer than the 15-second heartbeat.
+The application sends `Cache-Control: no-cache` and `X-Accel-Buffering: no`;
+equivalent buffering/timeout settings may still be required for non-Nginx
+proxies and hosting platforms.
 
 ## HTTPS development
 
@@ -302,7 +326,7 @@ key in an appsettings file or commit it to source control.
 - ~~match meso and macro color to the video~~
 - ~~standalone page for the atlas (linked from header and main page)~~
 - ~~icons for each axis (e.g. fps for micro, rock paper scissors for meso, chess for macro)?~~
-- live updates to atlas?
+- ~~live updates to atlas~~
 - ~~add video embed to home page~~
 
 - buy domain
