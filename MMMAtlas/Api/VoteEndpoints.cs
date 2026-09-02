@@ -27,6 +27,7 @@ public static class VoteEndpoints
         HttpContext httpContext,
         IAntiforgery antiforgery,
         VotingManager manager,
+        ILogger<VotingManager> logger,
         CancellationToken cancellationToken)
     {
         await antiforgery.ValidateRequestAsync(httpContext);
@@ -35,6 +36,13 @@ public static class VoteEndpoints
         var updatedVotes = await manager.MakeAllPrivateAsync(
             userId,
             cancellationToken);
+
+        logger.LogInformation(
+            "Made {UpdatedVoteCount} votes private for UserId {UserId}. "
+            + "TraceId {TraceId}.",
+            updatedVotes,
+            userId,
+            httpContext.TraceIdentifier);
 
         return WantsHtml(httpContext.Request)
             ? Results.Redirect("/dashboard?notice=votes-private")
@@ -47,7 +55,7 @@ public static class VoteEndpoints
         IAntiforgery antiforgery,
         VotingManager manager,
         AtlasEventBroadcaster broadcaster,
-        ILogger<AtlasEventBroadcaster> logger,
+        ILogger<VotingManager> logger,
         CancellationToken cancellationToken)
     {
         await antiforgery.ValidateRequestAsync(httpContext);
@@ -118,6 +126,15 @@ public static class VoteEndpoints
                 title: "Game not found");
         }
 
+        logger.LogInformation(
+            "Vote {VoteOperation} for GameId {GameId} by UserId {UserId}; "
+            + "public: {IsPublic}. TraceId {TraceId}.",
+            result.Amended ? "amended" : "created",
+            gameId,
+            userId,
+            result.Scores.IsPublic,
+            httpContext.TraceIdentifier);
+
         // The database transaction has committed before this best-effort,
         // non-blocking notification. Slow or disconnected viewers cannot hold up
         // the vote request, and the authoritative game endpoint remains the source
@@ -130,8 +147,11 @@ public static class VoteEndpoints
         {
             logger.LogWarning(
                 exception,
-                "The vote for game {GameId} committed, but its atlas update notification failed.",
-                gameId);
+                "The vote for GameId {GameId} by UserId {UserId} committed, "
+                + "but its atlas update notification failed. TraceId {TraceId}.",
+                gameId,
+                userId,
+                httpContext.TraceIdentifier);
         }
 
         return Results.Ok(new VoteResponse(

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using MMMAtlas.Data;
 
@@ -7,12 +8,14 @@ namespace MMMAtlas.Steam;
 public sealed class SteamAuthenticationManager(
     DatabaseConnection database,
     SteamApiClient steamApiClient,
-    ISteamStoreClient steamStoreClient)
+    ISteamStoreClient steamStoreClient,
+    ILogger<SteamAuthenticationManager> logger)
 {
     public async Task<SteamSignInResult> CompleteSignInAsync(
         long steamId,
         CancellationToken cancellationToken)
     {
+        var started = Stopwatch.GetTimestamp();
         var account = await GetOrCreateAccountAsync(
             steamId,
             cancellationToken);
@@ -28,17 +31,28 @@ public sealed class SteamAuthenticationManager(
             account.UserId,
             cancellationToken);
 
-        return new SteamSignInResult(
+        var result = new SteamSignInResult(
             account.UserId,
             steamId,
             dashboard?.PersonaName,
             account.DataCollectionEnabled);
+
+        logger.LogInformation(
+            "Steam sign-in completed for UserId {UserId} in "
+            + "{ElapsedMilliseconds:F1} ms; data collection enabled: "
+            + "{DataCollectionEnabled}.",
+            account.UserId,
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+            account.DataCollectionEnabled);
+
+        return result;
     }
 
     public async Task RefreshStoredDataAsync(
         long userId,
         CancellationToken cancellationToken)
     {
+        var started = Stopwatch.GetTimestamp();
         var account = await GetAccountAsync(userId, cancellationToken);
         if (account is null || !account.DataCollectionEnabled)
         {
@@ -63,6 +77,17 @@ public sealed class SteamAuthenticationManager(
             library,
             newGameMetadata,
             cancellationToken);
+
+        logger.LogInformation(
+            "Steam data refresh completed for UserId {UserId} in "
+            + "{ElapsedMilliseconds:F1} ms; library status {LibraryStatus}, "
+            + "owned games {OwnedGameCount}, new metadata records "
+            + "{MetadataCount}.",
+            userId,
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+            library.Availability,
+            library.Games.Count,
+            newGameMetadata.Count);
     }
 
     public async Task SetDataCollectionEnabledAsync(
@@ -92,6 +117,10 @@ public sealed class SteamAuthenticationManager(
         {
             throw new InvalidOperationException("The Steam account does not exist.");
         }
+
+        logger.LogInformation(
+            "Steam data collection enabled for UserId {UserId}.",
+            userId);
 
         await RefreshStoredDataAsync(userId, cancellationToken);
     }
@@ -127,6 +156,10 @@ public sealed class SteamAuthenticationManager(
             cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+
+        logger.LogInformation(
+            "Stored Steam data erased and collection disabled for UserId {UserId}.",
+            userId);
     }
 
     public async Task<SteamDashboard?> GetDashboardAsync(
@@ -288,6 +321,9 @@ public sealed class SteamAuthenticationManager(
         await createAccountCommand.ExecuteNonQueryAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
+        logger.LogInformation(
+            "Steam account created for UserId {UserId}.",
+            newUserId);
         return new SteamAccount(newUserId, steamId, false);
     }
 

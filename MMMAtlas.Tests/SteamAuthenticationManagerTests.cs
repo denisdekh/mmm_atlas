@@ -255,7 +255,8 @@ public sealed class SteamAuthenticationManagerTests
         return new SteamAuthenticationManager(
             database,
             apiClient,
-            _storeClient);
+            _storeClient,
+            NullLogger<SteamAuthenticationManager>.Instance);
     }
 
     private sealed class TestSteamStoreClient : ISteamStoreClient

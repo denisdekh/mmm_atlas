@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.DataProtection;
 using MMMAtlas.Api;
 using MMMAtlas.Configuration;
 using MMMAtlas.Data;
+using MMMAtlas.Observability;
 using MMMAtlas.Steam;
 using MMMAtlas.Voting;
 
@@ -93,6 +94,8 @@ builder.Services
         options.SignInScheme = AuthenticationSchemes.ApplicationCookie;
         options.Events.OnTicketReceived = async context =>
         {
+            var authenticationLogger = context.HttpContext.RequestServices
+                .GetRequiredService<ILogger<SteamAuthenticationManager>>();
             var identifier = context.Principal?
                 .FindFirstValue(ClaimTypes.NameIdentifier);
             var steamIdText = identifier?
@@ -103,15 +106,36 @@ builder.Services
             if (!long.TryParse(steamIdText, out var steamId)
                 || steamId <= 0)
             {
+                authenticationLogger.LogWarning(
+                    "Steam sign-in returned an invalid identifier. TraceId {TraceId}.",
+                    context.HttpContext.TraceIdentifier);
                 context.Fail("Steam did not return a valid Steam ID.");
                 return;
             }
 
             var manager = context.HttpContext.RequestServices
                 .GetRequiredService<SteamAuthenticationManager>();
-            var result = await manager.CompleteSignInAsync(
-                steamId,
-                context.HttpContext.RequestAborted);
+            SteamSignInResult result;
+            try
+            {
+                result = await manager.CompleteSignInAsync(
+                    steamId,
+                    context.HttpContext.RequestAborted);
+            }
+            catch (Exception exception)
+            {
+                authenticationLogger.LogError(
+                    exception,
+                    "Steam sign-in completion failed. TraceId {TraceId}.",
+                    context.HttpContext.TraceIdentifier);
+                throw;
+            }
+
+            authenticationLogger.LogInformation(
+                "Steam authentication accepted for UserId {UserId}. "
+                + "TraceId {TraceId}.",
+                result.UserId,
+                context.HttpContext.TraceIdentifier);
 
             var name = string.IsNullOrWhiteSpace(result.PersonaName)
                 ? $"Steam {steamId}"
@@ -172,6 +196,13 @@ builder.Services
 
 var app = builder.Build();
 
+app.Logger.LogInformation(
+    "MMM Atlas starting in {BuildMode} mode using database {DatabaseName}; "
+    + "API profiler enabled: {ProfilerEnabled}.",
+    buildPolicy.Mode,
+    databaseConnectionName,
+    profilerEnabled);
+
 if (!buildPolicy.DebugEnabled)
 {
     app.UseExceptionHandler("/error");
@@ -186,14 +217,42 @@ app.UseWhen(
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthentication();
+app.UseMiddleware<OperationalRequestLoggingMiddleware>();
 app.UseAuthorization();
 
 if (buildPolicy.UsesDevelopmentDatabase)
 {
-    await DevelopmentDatabase.InitializeAsync(
-        database,
-        !profilerEnabled && builder.Configuration.GetValue<bool>(
-            "DevelopmentData:SeedOnStartup"));
+    var seedOnStartup = !profilerEnabled
+        && builder.Configuration.GetValue<bool>(
+            "DevelopmentData:SeedOnStartup");
+    var databaseInitializationStarted = System.Diagnostics.Stopwatch
+        .GetTimestamp();
+
+    try
+    {
+        await DevelopmentDatabase.InitializeAsync(
+            database,
+            seedOnStartup);
+        app.Logger.LogInformation(
+            "Database {DatabaseName} initialized in {ElapsedMilliseconds:F1} ms; "
+            + "seed requested: {SeedOnStartup}.",
+            databaseConnectionName,
+            System.Diagnostics.Stopwatch.GetElapsedTime(
+                databaseInitializationStarted).TotalMilliseconds,
+            seedOnStartup);
+    }
+    catch (Exception exception)
+    {
+        app.Logger.LogCritical(
+            exception,
+            "Database {DatabaseName} initialization failed after "
+            + "{ElapsedMilliseconds:F1} ms; seed requested: {SeedOnStartup}.",
+            databaseConnectionName,
+            System.Diagnostics.Stopwatch.GetElapsedTime(
+                databaseInitializationStarted).TotalMilliseconds,
+            seedOnStartup);
+        throw;
+    }
 }
 
 app.MapStaticAssets();

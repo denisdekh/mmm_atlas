@@ -357,6 +357,7 @@ public static class GameEndpoints
         HttpContext httpContext,
         DatabaseConnection database,
         IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         await using var connection = new SqliteConnection(database.Value);
@@ -398,12 +399,22 @@ public static class GameEndpoints
         }
 
         var client = httpClientFactory.CreateClient("SteamLibraryImages");
+        var logger = loggerFactory.CreateLogger(
+            "MMMAtlas.Steam.SteamLibraryImages");
         using var response = await client.GetAsync(
             $"steam/apps/{appId}/library_600x900.jpg",
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            logger.LogWarning(
+                "Steam library card request failed for GameId {GameId}, "
+                + "SteamAppId {SteamAppId}, with status {StatusCode}. "
+                + "TraceId {TraceId}.",
+                gameId,
+                appId,
+                (int)response.StatusCode,
+                httpContext.TraceIdentifier);
             return Results.Problem(
                 statusCode: StatusCodes.Status502BadGateway,
                 title: "Steam library card unavailable");
@@ -413,6 +424,14 @@ public static class GameEndpoints
         if (response.Content.Headers.ContentLength
             is > maximumLibraryCardBytes)
         {
+            logger.LogWarning(
+                "Steam library card for GameId {GameId}, SteamAppId "
+                + "{SteamAppId}, declared {ContentLength} bytes and was rejected. "
+                + "TraceId {TraceId}.",
+                gameId,
+                appId,
+                response.Content.Headers.ContentLength,
+                httpContext.TraceIdentifier);
             return Results.Problem(
                 statusCode: StatusCodes.Status502BadGateway,
                 title: "Steam library card is too large");
@@ -422,6 +441,14 @@ public static class GameEndpoints
             cancellationToken);
         if (content.Length > maximumLibraryCardBytes)
         {
+            logger.LogWarning(
+                "Steam library card for GameId {GameId}, SteamAppId "
+                + "{SteamAppId}, contained {ContentLength} bytes and was rejected. "
+                + "TraceId {TraceId}.",
+                gameId,
+                appId,
+                content.Length,
+                httpContext.TraceIdentifier);
             return Results.Problem(
                 statusCode: StatusCodes.Status502BadGateway,
                 title: "Steam library card is too large");
