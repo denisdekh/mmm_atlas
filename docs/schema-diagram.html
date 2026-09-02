@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MMM Atlas SQLite schema</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --page: #f4f7fb;
+            --surface: #ffffff;
+            --surface-raised: #f8fafc;
+            --text: #172033;
+            --muted: #5f6b7c;
+            --border: #d7deea;
+            --line: #7788a6;
+            --accent: #176b87;
+            --accent-soft: #e1f2f7;
+            --pk: #7a4f00;
+            --pk-bg: #fff1c7;
+            --fk: #1a5f3c;
+            --fk-bg: #dff4e8;
+            --ix: #64378b;
+            --ix-bg: #eee3f8;
+            --uq: #8a3853;
+            --uq-bg: #f8e3eb;
+            --shadow: 0 12px 30px rgba(40, 55, 80, 0.08);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --page: #0f141d;
+                --surface: #171e29;
+                --surface-raised: #1d2633;
+                --text: #e9eef6;
+                --muted: #aab5c5;
+                --border: #344154;
+                --line: #7f93b0;
+                --accent: #73c9e2;
+                --accent-soft: #193b47;
+                --pk: #ffd278;
+                --pk-bg: #4c3916;
+                --fk: #8de0b2;
+                --fk-bg: #173d2a;
+                --ix: #d4a9f4;
+                --ix-bg: #3e2951;
+                --uq: #f2aac0;
+                --uq-bg: #4c2633;
+                --shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--page);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .page {
+            width: min(100% - 2rem, 1800px);
+            margin: 0 auto;
+            padding: 2rem 0 4rem;
+        }
+
+        header {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        h1,
+        h2,
+        p {
+            margin-top: 0;
+        }
+
+        h1 {
+            margin-bottom: 0.35rem;
+            font-size: clamp(1.8rem, 4vw, 3rem);
+            letter-spacing: -0.045em;
+        }
+
+        .subtitle {
+            margin-bottom: 0;
+            color: var(--muted);
+        }
+
+        .source {
+            color: var(--muted);
+            font-size: 0.85rem;
+            text-align: right;
+        }
+
+        .source code {
+            color: var(--text);
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem 1rem;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            padding: 0.8rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            background: var(--surface-raised);
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        .legend strong {
+            color: var(--text);
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2rem;
+            padding: 0.12rem 0.35rem;
+            border-radius: 999px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+        }
+
+        .badge-pk {
+            background: var(--pk-bg);
+            color: var(--pk);
+        }
+
+        .badge-fk {
+            background: var(--fk-bg);
+            color: var(--fk);
+        }
+
+        .badge-ix {
+            background: var(--ix-bg);
+            color: var(--ix);
+        }
+
+        .badge-uq {
+            background: var(--uq-bg);
+            color: var(--uq);
+        }
+
+        .diagram {
+            position: relative;
+            isolation: isolate;
+        }
+
+        .relationships {
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            pointer-events: none;
+        }
+
+        .relationship {
+            fill: none;
+            stroke: var(--line);
+            stroke-width: 1.6;
+            opacity: 0.6;
+            marker-end: url(#arrow);
+            transition: opacity 150ms ease, stroke-width 150ms ease, stroke 150ms ease;
+        }
+
+        .relationship.is-active {
+            stroke: var(--accent);
+            stroke-width: 3;
+            opacity: 1;
+        }
+
+        .schema-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(290px, 1fr));
+            grid-template-areas:
+                "users steam-accounts library votes"
+                "games steam-games aggregates development"
+                "atlas-icons developers publishers genres";
+            gap: 2rem;
+            align-items: start;
+        }
+
+        .table-card {
+            position: relative;
+            z-index: 1;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 0.85rem;
+            background: var(--surface);
+            box-shadow: var(--shadow);
+            transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+        }
+
+        .table-card:hover,
+        .table-card:focus-within,
+        .table-card.is-active {
+            border-color: var(--accent);
+            box-shadow: 0 14px 34px color-mix(in srgb, var(--accent) 17%, transparent);
+            transform: translateY(-2px);
+        }
+
+        .table-card h2 {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            margin: 0;
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-raised);
+            font-size: 1rem;
+            letter-spacing: -0.015em;
+        }
+
+        .table-kind {
+            color: var(--muted);
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .fields {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+
+        .fields th,
+        .fields td {
+            padding: 0.48rem 0.55rem;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .fields th {
+            color: var(--muted);
+            background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
+            font-size: 0.66rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .fields tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .field-name {
+            color: var(--text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .type,
+        .default {
+            color: var(--muted);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        .keys {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.2rem;
+            min-width: 4.5rem;
+        }
+
+        .card-footer {
+            display: grid;
+            gap: 0.45rem;
+            padding: 0.75rem 1rem 0.85rem;
+            border-top: 1px solid var(--border);
+            background: color-mix(in srgb, var(--surface-raised) 60%, transparent);
+            color: var(--muted);
+            font-size: 0.7rem;
+        }
+
+        .card-footer strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .card-footer code {
+            color: var(--muted);
+            overflow-wrap: anywhere;
+        }
+
+        #table-users { grid-area: users; }
+        #table-steam-accounts { grid-area: steam-accounts; }
+        #table-steam-library-games { grid-area: library; }
+        #table-votes { grid-area: votes; }
+        #table-games { grid-area: games; }
+        #table-steam-games { grid-area: steam-games; }
+        #table-steam-game-developers { grid-area: developers; }
+        #table-steam-game-publishers { grid-area: publishers; }
+        #table-steam-game-genres { grid-area: genres; }
+        #table-game-atlas-icons { grid-area: atlas-icons; }
+        #table-game-vote-aggregates { grid-area: aggregates; }
+        #table-development-game-info { grid-area: development; }
+
+        .notes {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .note {
+            padding: 0.9rem 1rem;
+            border-left: 3px solid var(--accent);
+            background: var(--surface-raised);
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+
+        .note strong {
+            color: var(--text);
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        @media (max-width: 1320px) {
+            .schema-grid {
+                grid-template-columns: repeat(2, minmax(290px, 1fr));
+                grid-template-areas:
+                    "users steam-accounts"
+                    "games steam-games"
+                    "developers publishers"
+                    "genres library"
+                    "votes aggregates"
+                    "atlas-icons development";
+            }
+        }
+
+        @media (max-width: 720px) {
+            .page {
+                width: min(100% - 1rem, 1800px);
+                padding-top: 1rem;
+            }
+
+            header {
+                display: block;
+            }
+
+            .source {
+                margin-top: 0.75rem;
+                text-align: left;
+            }
+
+            .schema-grid,
+            .notes {
+                grid-template-columns: 1fr;
+            }
+
+            .schema-grid {
+                grid-template-areas:
+                    "users"
+                    "steam-accounts"
+                    "games"
+                    "steam-games"
+                    "developers"
+                    "publishers"
+                    "genres"
+                    "library"
+                    "votes"
+                    "aggregates"
+                    "atlas-icons"
+                    "development";
+                gap: 1rem;
+            }
+
+            .relationships {
+                display: none;
+            }
+
+            .fields th,
+            .fields td {
+                padding-inline: 0.4rem;
+            }
+        }
+
+        @media print {
+            :root {
+                color-scheme: light;
+            }
+
+            body {
+                background: #fff;
+            }
+
+            .page {
+                width: 100%;
+                padding: 0;
+            }
+
+            .table-card {
+                break-inside: avoid;
+                box-shadow: none;
+            }
+
+            .relationships {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        <header>
+            <div>
+                <h1>MMM Atlas SQLite schema</h1>
+                <p class="subtitle">Twelve tables, twelve displayed foreign-key relationships, and two explicit secondary indexes.</p>
+            </div>
+            <div class="source">Source: <code>SQLiteTableSchemas.sql</code></div>
+        </header>
+
+        <section class="legend" aria-label="Diagram legend">
+            <strong>Field markers</strong>
+            <span><span class="badge badge-pk">PK</span> primary key</span>
+            <span><span class="badge badge-fk">FK</span> foreign key</span>
+            <span><span class="badge badge-uq">UQ</span> unique</span>
+            <span><span class="badge badge-ix">IX</span> explicit index</span>
+            <span>Lines point from child to parent.</span>
+        </section>
+
+        <section class="diagram" id="schema-diagram" aria-label="Entity relationship diagram">
+            <svg class="relationships" aria-hidden="true">
+                <defs>
+                    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                        <path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"></path>
+                    </marker>
+                </defs>
+                <g id="relationship-paths"></g>
+            </svg>
+
+            <div class="schema-grid">
+                <article class="table-card" id="table-users" data-table="Users">
+                    <h2><span>Users</span><span class="table-kind">source</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">UserId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span></span></td><td class="default">NOT NULL · AUTOINCREMENT</td></tr>
+                            <tr><td class="field-name">ShowVotesPublicly</td><td class="type">INTEGER</td><td></td><td class="default">NOT NULL · 0</td></tr>
+                            <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                            <tr><td class="field-name">UpdatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_Users (UserId)</code></div>
+                        <div><strong>Check:</strong> <code>ShowVotesPublicly IN (0, 1)</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-steam-accounts" data-table="SteamAccounts">
+                    <h2><span>SteamAccounts</span><span class="table-kind">identity</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">UserId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">SteamId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-uq">UQ</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">DataCollectionEnabled</td><td class="type">INTEGER</td><td></td><td class="default">NOT NULL · 0</td></tr>
+                            <tr><td class="field-name">PersonaName</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">ProfileUrl</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">AvatarUrl</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">ProfileFetchedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                            <tr><td class="field-name">UpdatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                            <tr><td class="field-name">LibraryCheckStatus</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · 'NeverChecked'</td></tr>
+                            <tr><td class="field-name">LibraryCheckedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">LibrarySyncedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Indexes:</strong> <code>PK_SteamAccounts (UserId)</code>; <code>UQ_SteamAccounts_SteamId (SteamId)</code></div>
+                        <div><strong>FK:</strong> <code>UserId → Users.UserId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-steam-library-games" data-table="SteamLibraryGames">
+                    <h2><span>SteamLibraryGames</span><span class="table-kind">ownership cache</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">UserId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span><span class="badge badge-ix">IX</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">PlaytimeForeverMinutes</td><td class="type">INTEGER</td><td></td><td class="default">NOT NULL · 0</td></tr>
+                            <tr><td class="field-name">PlaytimeTwoWeeksMinutes</td><td class="type">INTEGER</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">LastPlayedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">FirstSeenAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                            <tr><td class="field-name">VerifiedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Indexes:</strong> <code>PK_SteamLibraryGames (UserId, GameId)</code>; <code>IX_SteamLibraryGames_GameId (GameId)</code></div>
+                        <div><strong>FKs:</strong> <code>UserId → SteamAccounts.UserId CASCADE</code>; <code>GameId → SteamGames.GameId RESTRICT</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-votes" data-table="Votes">
+                    <h2><span>Votes</span><span class="table-kind">source</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">UserId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span><span class="badge badge-ix">IX</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">MicroScore</td><td class="type">REAL</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">MesoScore</td><td class="type">REAL</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">MacroScore</td><td class="type">REAL</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">IsPublic</td><td class="type">INTEGER</td><td></td><td class="default">NOT NULL · 0</td></tr>
+                            <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                            <tr><td class="field-name">UpdatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Indexes:</strong> <code>PK_Votes (UserId, GameId)</code>; <code>IX_Votes_GameId (GameId)</code></div>
+                        <div><strong>FKs:</strong> <code>UserId → Users.UserId ON DELETE CASCADE</code>; <code>GameId → Games.GameId</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-games" data-table="Games">
+                    <h2><span>Games</span><span class="table-kind">source</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span></span></td><td class="default">NOT NULL · AUTOINCREMENT</td></tr>
+                            <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer"><div><strong>Index:</strong> <code>PK_Games (GameId)</code></div></div>
+                </article>
+
+                <article class="table-card" id="table-steam-games" data-table="SteamGames">
+                    <h2><span>SteamGames</span><span class="table-kind">catalog link</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">SteamAppId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-uq">UQ</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">Name</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">Description</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">ReleaseYear</td><td class="type">INTEGER</td><td></td><td class="default">NULL · 1970–2100</td></tr>
+                            <tr><td class="field-name">IsFree</td><td class="type">INTEGER</td><td></td><td class="default">NULL · 0 or 1</td></tr>
+                            <tr><td class="field-name">StoreMetadataFetchedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                            <tr><td class="field-name">UpdatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Indexes:</strong> <code>PK_SteamGames (GameId)</code>; <code>UQ_SteamGames_SteamAppId (SteamAppId)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → Games.GameId ON DELETE RESTRICT</code></div>
+                        <div><strong>Checks:</strong> <code>ReleaseYear IS NULL OR 1970–2100</code>; <code>IsFree IS NULL OR IN (0, 1)</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-steam-game-developers" data-table="SteamGameDevelopers">
+                    <h2><span>SteamGameDevelopers</span><span class="table-kind">store metadata</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">DeveloperName</td><td class="type">TEXT</td><td><span class="keys"><span class="badge badge-pk">PK</span></span></td><td class="default">NOT NULL · nonblank</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_SteamGameDevelopers (GameId, DeveloperName)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → SteamGames.GameId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-steam-game-publishers" data-table="SteamGamePublishers">
+                    <h2><span>SteamGamePublishers</span><span class="table-kind">store metadata</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">PublisherName</td><td class="type">TEXT</td><td><span class="keys"><span class="badge badge-pk">PK</span></span></td><td class="default">NOT NULL · nonblank</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_SteamGamePublishers (GameId, PublisherName)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → SteamGames.GameId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-steam-game-genres" data-table="SteamGameGenres">
+                    <h2><span>SteamGameGenres</span><span class="table-kind">store metadata</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">GenreName</td><td class="type">TEXT</td><td><span class="keys"><span class="badge badge-pk">PK</span></span></td><td class="default">NOT NULL · nonblank</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_SteamGameGenres (GameId, GenreName)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → SteamGames.GameId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-game-atlas-icons" data-table="GameAtlasIcons">
+                    <h2><span>GameAtlasIcons</span><span class="table-kind">atlas media</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">ImageContentType</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · 'image/png'</td></tr>
+                            <tr><td class="field-name">ImageContent</td><td class="type">BLOB</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">DiameterPixels</td><td class="type">INTEGER</td><td></td><td class="default">NOT NULL · 96</td></tr>
+                            <tr><td class="field-name">LibraryCardContentType</td><td class="type">TEXT</td><td></td><td class="default">NULL · 'image/jpeg'</td></tr>
+                            <tr><td class="field-name">LibraryCardContent</td><td class="type">BLOB</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">LibraryCardWidthPixels</td><td class="type">INTEGER</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">LibraryCardHeightPixels</td><td class="type">INTEGER</td><td></td><td class="default">NULL</td></tr>
+                            <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_GameAtlasIcons (GameId)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → Games.GameId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-game-vote-aggregates" data-table="GameVoteAggregates">
+                    <h2><span>GameVoteAggregates</span><span class="table-kind">projection</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">VoteCount</td><td class="type">INTEGER</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">MicroRatio</td><td class="type">REAL</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">MesoRatio</td><td class="type">REAL</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">MacroRatio</td><td class="type">REAL</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">UpdatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_GameVoteAggregates (GameId)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → Games.GameId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+
+                <article class="table-card" id="table-development-game-info" data-table="DevelopmentGameInfo">
+                    <h2><span>DevelopmentGameInfo</span><span class="table-kind">temporary</span></h2>
+                    <table class="fields">
+                        <thead><tr><th>Field</th><th>Type</th><th>Key</th><th>Null / default</th></tr></thead>
+                        <tbody>
+                            <tr><td class="field-name">GameId</td><td class="type">INTEGER</td><td><span class="keys"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span></span></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">Name</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">Summary</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">ImageContentType</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">ImageContent</td><td class="type">BLOB</td><td></td><td class="default">NOT NULL</td></tr>
+                            <tr><td class="field-name">CreatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                            <tr><td class="field-name">UpdatedAtUtc</td><td class="type">TEXT</td><td></td><td class="default">NOT NULL · CURRENT_TIMESTAMP</td></tr>
+                        </tbody>
+                    </table>
+                    <div class="card-footer">
+                        <div><strong>Index:</strong> <code>PK_DevelopmentGameInfo (GameId)</code></div>
+                        <div><strong>FK:</strong> <code>GameId → Games.GameId ON DELETE CASCADE</code></div>
+                    </div>
+                </article>
+            </div>
+
+            <ol class="sr-only">
+                <li>SteamAccounts.UserId references Users.UserId.</li>
+                <li>SteamLibraryGames.UserId references SteamAccounts.UserId.</li>
+                <li>SteamLibraryGames.GameId references SteamGames.GameId.</li>
+                <li>SteamGames.GameId references Games.GameId.</li>
+                <li>SteamGameDevelopers.GameId references SteamGames.GameId.</li>
+                <li>SteamGamePublishers.GameId references SteamGames.GameId.</li>
+                <li>SteamGameGenres.GameId references SteamGames.GameId.</li>
+                <li>Votes.UserId references Users.UserId.</li>
+                <li>Votes.GameId references Games.GameId.</li>
+                <li>GameAtlasIcons.GameId references Games.GameId.</li>
+                <li>GameVoteAggregates.GameId references Games.GameId.</li>
+                <li>DevelopmentGameInfo.GameId references Games.GameId.</li>
+            </ol>
+        </section>
+
+        <section class="notes" aria-label="Schema notes">
+            <div class="note"><strong>GameAtlasIcons</strong> stores the first voter's circular PNG crop and the source Steam library-card JPEG by internal <code>GameId</code>.</div>
+            <div class="note"><strong>GameVoteAggregates</strong> is a rebuildable projection of normalized values from <code>Votes</code>.</div>
+            <div class="note"><strong>DevelopmentGameInfo</strong> is temporary blob-backed UI data; production metadata lives through the Steam link.</div>
+        </section>
+    </main>
+
+    <script>
+        (() => {
+            const diagram = document.getElementById("schema-diagram");
+            const svg = diagram.querySelector(".relationships");
+            const paths = document.getElementById("relationship-paths");
+            const cards = [...diagram.querySelectorAll(".table-card")];
+            const edges = [
+                ["table-steam-accounts", "table-users"],
+                ["table-steam-library-games", "table-steam-accounts"],
+                ["table-steam-library-games", "table-steam-games"],
+                ["table-steam-games", "table-games"],
+                ["table-steam-game-developers", "table-steam-games"],
+                ["table-steam-game-publishers", "table-steam-games"],
+                ["table-steam-game-genres", "table-steam-games"],
+                ["table-votes", "table-users"],
+                ["table-votes", "table-games"],
+                ["table-game-atlas-icons", "table-games"],
+                ["table-game-vote-aggregates", "table-games"],
+                ["table-development-game-info", "table-games"]
+            ];
+
+            const edgePoint = (rect, toward, bounds) => {
+                const centerX = rect.left - bounds.left + rect.width / 2;
+                const centerY = rect.top - bounds.top + rect.height / 2;
+                const targetX = toward.left - bounds.left + toward.width / 2;
+                const targetY = toward.top - bounds.top + toward.height / 2;
+                const dx = targetX - centerX;
+                const dy = targetY - centerY;
+
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    return {
+                        x: dx > 0 ? centerX + rect.width / 2 : centerX - rect.width / 2,
+                        y: centerY,
+                        axis: "x"
+                    };
+                }
+
+                return {
+                    x: centerX,
+                    y: dy > 0 ? centerY + rect.height / 2 : centerY - rect.height / 2,
+                    axis: "y"
+                };
+            };
+
+            const drawRelationships = () => {
+                if (window.matchMedia("(max-width: 720px)").matches) {
+                    paths.replaceChildren();
+                    return;
+                }
+
+                const bounds = diagram.getBoundingClientRect();
+                svg.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
+                paths.replaceChildren();
+
+                for (const [fromId, toId] of edges) {
+                    const from = document.getElementById(fromId);
+                    const to = document.getElementById(toId);
+                    const fromRect = from.getBoundingClientRect();
+                    const toRect = to.getBoundingClientRect();
+                    const start = edgePoint(fromRect, toRect, bounds);
+                    const end = edgePoint(toRect, fromRect, bounds);
+                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+                    let d;
+                    if (start.axis === "x" && end.axis === "x") {
+                        const midX = (start.x + end.x) / 2;
+                        d = `M ${start.x} ${start.y} C ${midX} ${start.y}, ${midX} ${end.y}, ${end.x} ${end.y}`;
+                    } else {
+                        const midY = (start.y + end.y) / 2;
+                        d = `M ${start.x} ${start.y} C ${start.x} ${midY}, ${end.x} ${midY}, ${end.x} ${end.y}`;
+                    }
+
+                    path.setAttribute("d", d);
+                    path.classList.add("relationship");
+                    path.dataset.from = fromId;
+                    path.dataset.to = toId;
+                    paths.append(path);
+                }
+            };
+
+            const setActive = (cardId) => {
+                for (const card of cards) {
+                    card.classList.toggle("is-active", card.id === cardId);
+                }
+
+                for (const path of paths.querySelectorAll(".relationship")) {
+                    const active = path.dataset.from === cardId || path.dataset.to === cardId;
+                    path.classList.toggle("is-active", active);
+                    if (active) {
+                        document.getElementById(path.dataset.from).classList.add("is-active");
+                        document.getElementById(path.dataset.to).classList.add("is-active");
+                    }
+                }
+            };
+
+            for (const card of cards) {
+                card.addEventListener("mouseenter", () => setActive(card.id));
+                card.addEventListener("mouseleave", () => setActive(null));
+                card.addEventListener("focusin", () => setActive(card.id));
+                card.addEventListener("focusout", () => setActive(null));
+            }
+
+            const resizeObserver = new ResizeObserver(drawRelationships);
+            resizeObserver.observe(diagram);
+            window.addEventListener("resize", drawRelationships, { passive: true });
+            drawRelationships();
+        })();
+    </script>
+</body>
+</html>

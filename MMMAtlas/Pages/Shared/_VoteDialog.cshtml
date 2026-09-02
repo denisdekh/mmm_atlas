@@ -1,0 +1,142 @@
+<dialog class="vote-dialog" data-vote-dialog aria-labelledby="vote-dialog-title">
+    <div class="vote-dialog-header">
+        <h2 id="vote-dialog-title" data-vote-title>Vote</h2>
+        <button type="button" data-vote-close aria-label="Close vote window">Close</button>
+    </div>
+
+    <div class="vote-dialog-game">
+        <img data-vote-icon alt="" width="64" height="64" hidden />
+    </div>
+
+    <form data-vote-form>
+        @Html.AntiForgeryToken()
+
+        <div class="vote-slider">
+            <span class="axis-tooltip">
+                <button
+                    type="button"
+                    id="vote-micro-label"
+                    class="axis-tooltip-trigger"
+                    data-axis-tooltip="micro">
+                    <img class="axis-icon axis-label-icon" src="~/images/axis-micro.svg" alt="" aria-hidden="true" />
+                    Micro
+                </button>
+            </span>
+            <input
+                type="range"
+                name="microScore"
+                aria-labelledby="vote-micro-label"
+                min="0"
+                max="10"
+                step="0.1"
+                value="5.0" />
+            <output data-score-output="microScore">5.0</output>
+        </div>
+
+        <div class="vote-slider">
+            <span class="axis-tooltip">
+                <button
+                    type="button"
+                    id="vote-meso-label"
+                    class="axis-tooltip-trigger"
+                    data-axis-tooltip="meso">
+                    <img class="axis-icon axis-label-icon" src="~/images/axis-meso.svg" alt="" aria-hidden="true" />
+                    Meso
+                </button>
+            </span>
+            <input
+                type="range"
+                name="mesoScore"
+                aria-labelledby="vote-meso-label"
+                min="0"
+                max="10"
+                step="0.1"
+                value="5.0" />
+            <output data-score-output="mesoScore">5.0</output>
+        </div>
+
+        <div class="vote-slider">
+            <span class="axis-tooltip">
+                <button
+                    type="button"
+                    id="vote-macro-label"
+                    class="axis-tooltip-trigger"
+                    data-axis-tooltip="macro">
+                    <img class="axis-icon axis-label-icon" src="~/images/chess.svg" alt="" aria-hidden="true" />
+                    Macro
+                </button>
+            </span>
+            <input
+                type="range"
+                name="macroScore"
+                aria-labelledby="vote-macro-label"
+                min="0"
+                max="10"
+                step="0.1"
+                value="5.0" />
+            <output data-score-output="macroScore">5.0</output>
+        </div>
+
+        <label>
+            <input type="checkbox" name="isPublic" value="true" data-vote-public />
+            Make this vote public
+        </label>
+
+        <p class="vote-error" data-vote-error role="alert" hidden></p>
+
+        <div class="vote-dialog-actions">
+            <button type="button" data-vote-cancel>Cancel</button>
+            <button type="submit" data-vote-submit>Submit vote</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog
+    class="vote-dialog atlas-crop-dialog"
+    data-atlas-crop-dialog
+    aria-labelledby="atlas-crop-dialog-title">
+    <div class="vote-dialog-header">
+        <h2 id="atlas-crop-dialog-title">Choose the atlas icon</h2>
+        <button type="button" data-crop-close aria-label="Close crop window">Close</button>
+    </div>
+
+    <p>
+        Drag the library card to frame a circular icon. The crop is saved at
+        96 pixels in diameter.
+    </p>
+
+    <div class="atlas-crop-stage" data-crop-stage aria-busy="true">
+        <canvas
+            data-crop-canvas
+            width="300"
+            height="300"
+            tabindex="0"
+            aria-label="Circular game icon crop preview"></canvas>
+        <p data-crop-loading>Loading Steam library card&hellip;</p>
+    </div>
+
+    <label class="atlas-crop-zoom">
+        <span>Zoom</span>
+        <input
+            type="range"
+            min="1"
+            max="3"
+            step="0.01"
+            value="1"
+            data-crop-zoom />
+    </label>
+
+    <p class="vote-error" data-crop-error role="alert" hidden></p>
+
+    <div class="vote-dialog-actions">
+        <button type="button" data-crop-cancel>Back</button>
+        <button type="button" data-crop-save disabled>Save icon and vote</button>
+    </div>
+</dialog>
+
+<div
+    class="vote-toast-region"
+    data-vote-toast-region
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"></div>

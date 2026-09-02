@@ -1,0 +1,246 @@
+@inject AtlasBuildPolicy BuildPolicy
+@{
+    var canvasTestFeaturesEnabled = BuildPolicy.TestFeaturesEnabled;
+}
+
+<div class="atlas-shell" data-atlas-shell>
+    <div class="atlas-toolbar" aria-label="Atlas filters and view controls">
+        <div class="atlas-filters">
+            <label>
+                <span>Find a game</span>
+                <input
+                    type="search"
+                    placeholder="Search rated games"
+                    autocomplete="off"
+                    data-atlas-search />
+            </label>
+            <fieldset class="atlas-range-filter">
+                <legend>Release year</legend>
+                <div>
+                    <input
+                        type="number"
+                        min="1970"
+                        max="2100"
+                        inputmode="numeric"
+                        placeholder="From"
+                        aria-label="Minimum release year"
+                        data-atlas-filter
+                        data-atlas-year-min />
+                    <span aria-hidden="true">–</span>
+                    <input
+                        type="number"
+                        min="1970"
+                        max="2100"
+                        inputmode="numeric"
+                        placeholder="To"
+                        aria-label="Maximum release year"
+                        data-atlas-filter
+                        data-atlas-year-max />
+                </div>
+            </fieldset>
+            <fieldset class="atlas-range-filter atlas-vote-range-filter">
+                <legend>Votes</legend>
+                <div>
+                    <input
+                        type="number"
+                        min="0"
+                        inputmode="numeric"
+                        placeholder="Min"
+                        aria-label="Minimum number of votes"
+                        data-atlas-filter
+                        data-atlas-votes-min />
+                    <span aria-hidden="true">–</span>
+                    <input
+                        type="number"
+                        min="0"
+                        inputmode="numeric"
+                        placeholder="Max"
+                        aria-label="Maximum number of votes"
+                        data-atlas-filter
+                        data-atlas-votes-max />
+                </div>
+            </fieldset>
+            <button
+                class="atlas-filter-toggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="atlas-extra-filters"
+                data-atlas-filter-toggle>
+                More filters
+                <span data-atlas-extra-filter-count hidden></span>
+            </button>
+            <button
+                class="atlas-clear-filters"
+                type="button"
+                data-atlas-clear-filters>Clear filters</button>
+        </div>
+
+        <div class="atlas-view-controls" aria-label="Atlas view">
+            <button type="button" data-atlas-zoom-out aria-label="Zoom out">−</button>
+            <button type="button" data-atlas-zoom-in aria-label="Zoom in">+</button>
+            <button type="button" data-atlas-fit>Fit results</button>
+            <button type="button" data-atlas-reset>Reset</button>
+            <button type="button" data-atlas-refresh>Refresh</button>
+            <button
+                type="button"
+                data-atlas-fullscreen
+                aria-pressed="false">Full screen</button>
+        </div>
+    </div>
+
+    <div
+        class="atlas-extra-filters"
+        id="atlas-extra-filters"
+        data-atlas-extra-filters
+        hidden>
+        <fieldset class="atlas-facet" data-atlas-facet="developer">
+            <legend>Developer</legend>
+            <label class="atlas-facet-search">
+                <span class="visually-hidden">Search developers</span>
+                <input
+                    type="search"
+                    placeholder="Search developers"
+                    autocomplete="off"
+                    data-atlas-facet-search="developer" />
+            </label>
+            <div
+                class="atlas-facet-options"
+                role="group"
+                aria-label="Developer filters"
+                data-atlas-developer></div>
+        </fieldset>
+        <fieldset class="atlas-facet" data-atlas-facet="publisher">
+            <legend>Publisher</legend>
+            <label class="atlas-facet-search">
+                <span class="visually-hidden">Search publishers</span>
+                <input
+                    type="search"
+                    placeholder="Search publishers"
+                    autocomplete="off"
+                    data-atlas-facet-search="publisher" />
+            </label>
+            <div
+                class="atlas-facet-options"
+                role="group"
+                aria-label="Publisher filters"
+                data-atlas-publisher></div>
+        </fieldset>
+        <fieldset class="atlas-facet" data-atlas-facet="genre">
+            <legend>Steam genre</legend>
+            <label class="atlas-facet-search">
+                <span class="visually-hidden">Search Steam genres</span>
+                <input
+                    type="search"
+                    placeholder="Search genres"
+                    autocomplete="off"
+                    data-atlas-facet-search="genre" />
+            </label>
+            <div
+                class="atlas-facet-options"
+                role="group"
+                aria-label="Steam genre filters"
+                data-atlas-genre></div>
+        </fieldset>
+        <fieldset class="atlas-facet atlas-price-facet">
+            <legend>Price</legend>
+            <div class="atlas-facet-options" role="group" aria-label="Price filters">
+                <label class="atlas-tristate-option">
+                    <input
+                        type="checkbox"
+                        value="paid"
+                        data-atlas-tristate="price"
+                        data-atlas-filter-state="none" />
+                    <span>Paid</span>
+                </label>
+                <label class="atlas-tristate-option">
+                    <input
+                        type="checkbox"
+                        value="free"
+                        data-atlas-tristate="price"
+                        data-atlas-filter-state="none" />
+                    <span>Free-to-play</span>
+                </label>
+            </div>
+        </fieldset>
+    </div>
+
+    @if (canvasTestFeaturesEnabled)
+    {
+        <form class="atlas-test-controls" data-atlas-test-controls hidden>
+            <div class="atlas-test-heading">
+                <strong>Canvas test points</strong>
+                <span>Enabled by the Canvas test launch profile or URL parameters.</span>
+            </div>
+            <label>
+                <span>Point count</span>
+                <input
+                    type="number"
+                    min="0"
+                    max="20000"
+                    step="100"
+                    inputmode="numeric"
+                    data-atlas-test-count />
+            </label>
+            <label>
+                <span>Random seed</span>
+                <input type="text" maxlength="80" data-atlas-test-seed />
+            </label>
+            <button type="submit">Apply points</button>
+            <button type="button" data-atlas-test-clear>Clear</button>
+        </form>
+    }
+
+    <div class="atlas-status-row">
+        <p class="game-api-status" data-game-status role="status" data-state="loading">
+            Loading the community atlas&hellip;
+        </p>
+        <span data-game-count>Waiting for API</span>
+    </div>
+
+    <p class="visually-hidden" id="atlas-description">
+        An interactive ternary map. Games near the top emphasize Micro, games
+        toward the lower left emphasize Meso, and games toward the lower right
+        emphasize Macro. Use arrow keys to move between visible games, Enter to
+        open one, plus and minus to zoom, and Home to reset the view.
+    </p>
+
+    <div class="atlas-stage" data-atlas-stage>
+        <canvas
+            data-atlas-canvas
+            tabindex="0"
+            role="img"
+            aria-label="Interactive map of community-rated games"
+            aria-describedby="atlas-description">
+            The game atlas requires Canvas support. Use the accessible game list
+            following the diagram instead.
+        </canvas>
+
+        <div class="atlas-tooltip" data-atlas-tooltip role="status" hidden>
+            <strong data-atlas-tooltip-title></strong>
+            <span data-atlas-tooltip-meta></span>
+            <span data-atlas-tooltip-ratios></span>
+        </div>
+
+        <div class="atlas-stage-help" aria-hidden="true">
+            <span>Drag to pan</span>
+            <span>Ctrl + scroll or pinch to zoom</span>
+            <span>Points reveal icons as you move closer</span>
+        </div>
+    </div>
+
+    <div class="atlas-legend" aria-label="Atlas color legend">
+        <span><img class="axis-icon atlas-legend-axis-icon" src="~/images/axis-micro.svg" alt="" aria-hidden="true" />Micro</span>
+        <span><img class="axis-icon atlas-legend-axis-icon" src="~/images/axis-meso.svg" alt="" aria-hidden="true" />Meso</span>
+        <span><img class="axis-icon atlas-legend-axis-icon" src="~/images/chess.svg" alt="" aria-hidden="true" />Macro</span>
+        <span><i class="atlas-swatch atlas-swatch-mixed"></i>Mixed</span>
+    </div>
+
+    <details class="atlas-results">
+        <summary>Browse the filtered games as a list</summary>
+        <ul class="atlas-result-list" data-game-list></ul>
+    </details>
+</div>
+
+<noscript>
+    <p class="game-api-error">JavaScript is required to render the interactive atlas.</p>
+</noscript>

@@ -1,0 +1,185 @@
+@page "/dashboard"
+@model MMMAtlas.Pages.DashboardModel
+@{
+    ViewData["Title"] = "Dashboard";
+    ViewData["Page"] = "dashboard";
+}
+
+<section>
+    <h1>Steam dashboard</h1>
+
+    @if (Model.Notice == "erased")
+    {
+        <p>Your stored Steam profile and library data has been cleared. Your submitted votes were retained.</p>
+    }
+    else if (Model.Notice == "collection-enabled")
+    {
+        <p>Data collection is enabled. Your Steam profile and library have been fetched.</p>
+    }
+    else if (Model.Notice == "votes-private")
+    {
+        <p>All of your votes are now private.</p>
+    }
+
+    @if (Model.Dashboard is null)
+    {
+        <p>Your Steam account could not be loaded.</p>
+    }
+    else
+    {
+        <section>
+            <h2>Profile</h2>
+
+            @if (Model.Dashboard.PersonaName is not null)
+            {
+                @if (Model.Dashboard.AvatarUrl is not null)
+                {
+                    <img
+                        src="@Model.Dashboard.AvatarUrl"
+                        alt=""
+                        width="96"
+                        height="96" />
+                }
+
+                <p>@Model.Dashboard.PersonaName</p>
+
+                @if (Model.Dashboard.ProfileUrl is not null)
+                {
+                    <p>
+                        <a href="@Model.Dashboard.ProfileUrl">Open Steam profile</a>
+                    </p>
+                }
+            }
+            else
+            {
+                <p>No Steam profile data is stored.</p>
+            }
+        </section>
+
+        <section>
+            <h2>Vote privacy</h2>
+            <p>
+                Private votes still contribute to game scores, but your Steam
+                profile name is not shown with them.
+            </p>
+            <form method="post" action="/api/me/votes/private">
+                @Html.AntiForgeryToken()
+                <button type="submit">Make all votes private</button>
+            </form>
+        </section>
+
+        <section>
+            <h2>Data collection</h2>
+
+            @if (Model.Dashboard.DataCollectionEnabled)
+            {
+                <p>
+                    Collection is enabled for your Steam profile, game library,
+                    and playtime.
+                </p>
+                <button type="button" data-steam-opt-out>
+                    Stop data collection
+                </button>
+            }
+            else
+            {
+                <p>
+                    Collection is disabled. MMM Atlas will not fetch or store
+                    your Steam profile, game library, or playtime unless you
+                    grant permission.
+                </p>
+                <form method="post" action="/api/me/steam-data/consent">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="enabled" value="true" />
+                    <button type="submit">Allow data collection</button>
+                </form>
+            }
+        </section>
+
+        <section>
+            <h2>Most played games</h2>
+            <p>Library status: @Model.Dashboard.LibraryCheckStatus</p>
+
+            @if (Model.Dashboard.MostPlayedGames.Count == 0)
+            {
+                <p>No game data is stored.</p>
+            }
+            else
+            {
+                <ol>
+                    @foreach (var game in Model.Dashboard.MostPlayedGames)
+                    {
+                        var hasVote = game.MicroScore is not null;
+                        <li class="dashboard-game">
+                            <span>
+                                @if (!game.NeedsAtlasIcon)
+                                {
+                                    <button
+                                        type="button"
+                                        class="game-name-button"
+                                        data-game-detail-trigger
+                                        data-game-id="@game.GameId"
+                                        data-game-title="@game.Name">@game.Name</button>
+                                }
+                                else
+                                {
+                                    @game.Name
+                                }
+                                —
+                                @((game.PlaytimeForeverMinutes / 60d).ToString("0.#")) hours
+                            </span>
+                            <button
+                                type="button"
+                                data-vote-trigger
+                                data-game-id="@game.GameId"
+                                data-steam-app-id="@game.SteamAppId"
+                                data-game-title="@game.Name"
+                                data-game-icon="@(game.HasAtlasIcon ? $"/api/games/{game.GameId}/atlas-icon" : null)"
+                                data-library-card-url="/api/games/@game.GameId/library-card"
+                                data-needs-atlas-icon="@game.NeedsAtlasIcon.ToString().ToLowerInvariant()"
+                                data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                data-is-public="@game.IsPublic.ToString().ToLowerInvariant()">
+                                @(hasVote ? "Amend vote" : "Submit vote")
+                            </button>
+                        </li>
+                    }
+                </ol>
+            }
+        </section>
+
+    }
+</section>
+
+@if (Model.Dashboard?.DataCollectionEnabled == true)
+{
+    <dialog
+        class="vote-dialog"
+        data-steam-opt-out-dialog
+        aria-labelledby="steam-opt-out-title"
+        aria-describedby="steam-opt-out-description">
+        <div class="vote-dialog-header">
+            <h2 id="steam-opt-out-title">Stop data collection?</h2>
+            <button type="button" data-steam-opt-out-cancel aria-label="Close">
+                Close
+            </button>
+        </div>
+        <p id="steam-opt-out-description">
+            Opting out will delete your stored Steam profile, game library, and
+            playtime data. Your submitted votes will not be deleted.
+        </p>
+        <form method="post" action="/api/me/steam-data/consent">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="enabled" value="false" />
+            <div class="vote-dialog-actions">
+                <button type="button" data-steam-opt-out-cancel>Keep collection enabled</button>
+                <button type="submit">Stop collection and delete game data</button>
+            </div>
+        </form>
+    </dialog>
+}
+
+@section Scripts {
+    <script type="module" src="~/js/dashboard-data-consent.js" asp-append-version="true"></script>
+}

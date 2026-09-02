@@ -1,3 +1,4 @@
+@inject AtlasBuildPolicy BuildPolicy
 <!doctype html>
 <html lang="en">
 <head>
@@ -7,7 +8,11 @@
     <title>@ViewData["Title"] · MMM Atlas</title>
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-<body data-page="@ViewData["Page"]">
+<body
+    data-page="@ViewData["Page"]"
+    data-build-mode="@BuildPolicy.Mode.ToString().ToLowerInvariant()"
+    data-test-features-enabled="@BuildPolicy.TestFeaturesEnabled.ToString().ToLowerInvariant()"
+    data-authenticated="@((User.Identity?.IsAuthenticated == true).ToString().ToLowerInvariant())">
     <header class="site-header">
         <a class="brand" asp-page="/Index" aria-label="MMM Atlas home">
             <span class="brand-mark" aria-hidden="true">M³</span>
@@ -16,14 +21,31 @@
 
         <nav class="site-nav" aria-label="Primary navigation">
             <a asp-page="/Index" asp-fragment="atlas">Explore the model</a>
-            <a asp-page="/Index" asp-fragment="games">Test game API</a>
+            <a asp-page="/Atlas">Game atlas</a>
             <a asp-page="/Index" asp-fragment="about">About</a>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <a asp-page="/Dashboard">Dashboard</a>
+                <form method="post" asp-page="/Logout">
+                    <button type="submit">Sign out</button>
+                </form>
+            }
+            else
+            {
+                <a asp-page="/Login">Sign in through Steam</a>
+            }
         </nav>
     </header>
 
     <main>
         @RenderBody()
     </main>
+
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <partial name="_VoteDialog" />
+    }
+    <partial name="_GameDetailDialog" />
 
     <footer class="site-footer">
         <span>MMM Atlas</span>

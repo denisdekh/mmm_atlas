@@ -1,0 +1,26 @@
+@page "/login"
+@model MMMAtlas.Pages.LoginModel
+@{
+    ViewData["Title"] = "Sign in";
+    ViewData["Page"] = "login";
+}
+
+<section>
+    <h1>Sign in through Steam</h1>
+
+    <p>
+        Steam verifies your identity and returns your Steam ID so MMM Atlas can
+        create your account and sign you in.
+    </p>
+
+    <p>
+        <strong>For a new account, MMM Atlas will not collect your Steam
+        profile, game library, or playtime unless and until you grant
+        permission.</strong> After signing in, you can opt in from your
+        dashboard if you want to use features that need that data.
+    </p>
+
+    <form method="post">
+        <button type="submit">Continue to Steam</button>
+    </form>
+</section>

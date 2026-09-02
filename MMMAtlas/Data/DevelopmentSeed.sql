@@ -53,15 +53,58 @@ VALUES
     (4, datetime('now', '-6 days'))
 ON CONFLICT (GameId) DO NOTHING;
 
-INSERT INTO SteamGames (GameId, SteamAppId, CreatedAtUtc, UpdatedAtUtc)
+INSERT INTO SteamGames
+(
+    GameId,
+    SteamAppId,
+    ReleaseYear,
+    IsFree,
+    StoreMetadataFetchedAtUtc,
+    CreatedAtUtc,
+    UpdatedAtUtc
+)
 VALUES
-    (1, 620,     datetime('now', '-28 days'), datetime('now')),
-    (2, 427520,  datetime('now', '-22 days'), datetime('now')),
-    (3, 281990,  datetime('now', '-15 days'), datetime('now')),
-    (4, 1145360, datetime('now', '-6 days'),  datetime('now'))
+    (1, 620,     2011, 0, datetime('now'), datetime('now', '-28 days'), datetime('now')),
+    (2, 427520,  2020, 0, datetime('now'), datetime('now', '-22 days'), datetime('now')),
+    (3, 281990,  2016, 0, datetime('now'), datetime('now', '-15 days'), datetime('now')),
+    (4, 1145360, 2020, 0, datetime('now'), datetime('now', '-6 days'),  datetime('now'))
 ON CONFLICT (GameId) DO UPDATE SET
     SteamAppId = excluded.SteamAppId,
+    ReleaseYear = excluded.ReleaseYear,
+    IsFree = excluded.IsFree,
+    StoreMetadataFetchedAtUtc = excluded.StoreMetadataFetchedAtUtc,
     UpdatedAtUtc = excluded.UpdatedAtUtc;
+
+INSERT INTO SteamGameDevelopers (GameId, DeveloperName)
+VALUES
+    (1, 'Valve'),
+    (2, 'Wube Software LTD.'),
+    (3, 'Paradox Development Studio'),
+    (4, 'Supergiant Games')
+ON CONFLICT (GameId, DeveloperName) DO NOTHING;
+
+INSERT INTO SteamGamePublishers (GameId, PublisherName)
+VALUES
+    (1, 'Valve'),
+    (2, 'Wube Software LTD.'),
+    (3, 'Paradox Interactive'),
+    (4, 'Supergiant Games')
+ON CONFLICT (GameId, PublisherName) DO NOTHING;
+
+INSERT INTO SteamGameGenres (GameId, GenreName)
+VALUES
+    (1, 'Action'),
+    (1, 'Adventure'),
+    (2, 'Casual'),
+    (2, 'Indie'),
+    (2, 'Simulation'),
+    (2, 'Strategy'),
+    (3, 'Simulation'),
+    (3, 'Strategy'),
+    (4, 'Action'),
+    (4, 'Indie'),
+    (4, 'RPG')
+ON CONFLICT (GameId, GenreName) DO NOTHING;
 
 INSERT INTO DevelopmentGameInfo
 (
@@ -141,26 +184,28 @@ INSERT INTO Votes
     MicroScore,
     MesoScore,
     MacroScore,
+    IsPublic,
     CreatedAtUtc,
     UpdatedAtUtc
 )
 VALUES
-    (1, 1, 7.5, 9.0, 4.5, datetime('now', '-20 days'), datetime('now')),
-    (2, 1, 6.0, 9.5, 3.5, datetime('now', '-18 days'), datetime('now')),
-    (3, 1, 8.0, 8.5, 5.0, datetime('now', '-12 days'), datetime('now')),
-    (1, 2, 6.5, 8.0, 9.5, datetime('now', '-17 days'), datetime('now')),
-    (2, 2, 5.0, 7.5, 10.0, datetime('now', '-15 days'), datetime('now')),
-    (4, 2, 7.0, 6.0, 9.0, datetime('now', '-4 days'), datetime('now')),
-    (1, 3, 3.5, 7.0, 10.0, datetime('now', '-11 days'), datetime('now')),
-    (3, 3, 4.0, 6.5, 9.5, datetime('now', '-9 days'), datetime('now')),
-    (4, 3, 2.5, 7.5, 9.0, datetime('now', '-3 days'), datetime('now')),
-    (1, 4, 9.5, 7.0, 4.0, datetime('now', '-5 days'), datetime('now')),
-    (2, 4, 9.0, 8.0, 3.0, datetime('now', '-4 days'), datetime('now')),
-    (3, 4, 10.0, 6.5, 3.5, datetime('now', '-3 days'), datetime('now'))
+    (1, 1, 7.5, 9.0, 4.5, 1, datetime('now', '-20 days'), datetime('now')),
+    (2, 1, 6.0, 9.5, 3.5, 0, datetime('now', '-18 days'), datetime('now')),
+    (3, 1, 8.0, 8.5, 5.0, 1, datetime('now', '-12 days'), datetime('now')),
+    (1, 2, 6.5, 8.0, 9.5, 1, datetime('now', '-17 days'), datetime('now')),
+    (2, 2, 5.0, 7.5, 10.0, 0, datetime('now', '-15 days'), datetime('now')),
+    (4, 2, 7.0, 6.0, 9.0, 0, datetime('now', '-4 days'), datetime('now')),
+    (1, 3, 3.5, 7.0, 10.0, 1, datetime('now', '-11 days'), datetime('now')),
+    (3, 3, 4.0, 6.5, 9.5, 1, datetime('now', '-9 days'), datetime('now')),
+    (4, 3, 2.5, 7.5, 9.0, 0, datetime('now', '-3 days'), datetime('now')),
+    (1, 4, 9.5, 7.0, 4.0, 1, datetime('now', '-5 days'), datetime('now')),
+    (2, 4, 9.0, 8.0, 3.0, 0, datetime('now', '-4 days'), datetime('now')),
+    (3, 4, 10.0, 6.5, 3.5, 1, datetime('now', '-3 days'), datetime('now'))
 ON CONFLICT (UserId, GameId) DO UPDATE SET
     MicroScore = excluded.MicroScore,
     MesoScore = excluded.MesoScore,
     MacroScore = excluded.MacroScore,
+    IsPublic = excluded.IsPublic,
     UpdatedAtUtc = excluded.UpdatedAtUtc;
 
 INSERT INTO GameVoteAggregates

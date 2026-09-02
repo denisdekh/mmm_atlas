@@ -8,14 +8,13 @@
     <div class="hero-copy">
         <p class="eyebrow">A community map of how games play</p>
         <h1>Every game has a different strategic shape.</h1>
-        <p class="hero-summary">
-            Rate games across Micro, Meso, and Macro. Community votes turn those
-            perspectives into a living atlas.
-        </p>
-        <a class="primary-action" href="#atlas">
-            Explore the axes
-            <span aria-hidden="true">↓</span>
-        </a>
+        <iframe
+            class="hero-video"
+            src="https://www.youtube.com/embed/NgHvdCcmQ4o?si=bxRATieshzO2Gjqo"
+            title="YouTube video player"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen></iframe>
     </div>
 
     <div class="axis-orbit" aria-hidden="true">
@@ -26,71 +25,46 @@
     </div>
 </section>
 
-<section class="axis-explorer" id="atlas" data-axis-preview data-active-axis="micro">
+<section class="axis-explorer" id="atlas">
     <div class="section-heading">
         <p class="eyebrow">The three axes</p>
-        <h2>Choose an axis to preview the model.</h2>
+        <h2>The three dimensions of skilled play.</h2>
     </div>
 
-    <div class="axis-grid" role="group" aria-label="MMM axis preview">
-        <button class="axis-card axis-micro" type="button" data-axis="micro" aria-pressed="true">
+    <div class="axis-grid">
+        <article class="axis-card axis-micro">
             <span class="axis-index">01</span>
+            <img class="axis-icon axis-card-icon" src="~/images/axis-micro.svg" alt="" aria-hidden="true" />
             <strong>Micro</strong>
-            <span>Immediate control, execution, and moment-to-moment decisions.</span>
-        </button>
-        <button class="axis-card axis-meso" type="button" data-axis="meso" aria-pressed="false">
+            <span>Requires mechanical skill, fast reactions, and quick inputs</span>
+        </article>
+        <article class="axis-card axis-meso">
             <span class="axis-index">02</span>
+            <img class="axis-icon axis-card-icon" src="~/images/axis-meso.svg" alt="" aria-hidden="true" />
             <strong>Meso</strong>
-            <span>Coordination, positioning, and medium-horizon planning.</span>
-        </button>
-        <button class="axis-card axis-macro" type="button" data-axis="macro" aria-pressed="false">
+            <span>Requires guessing your opponents, learning their habits, and acting under rng</span>
+        </article>
+        <article class="axis-card axis-macro">
             <span class="axis-index">03</span>
+            <img class="axis-icon axis-card-icon" src="~/images/chess.svg" alt="" aria-hidden="true" />
             <strong>Macro</strong>
-            <span>Economy, long-term strategy, and decisions that shape the whole match.</span>
-        </button>
-    </div>
-
-    <p class="axis-status" aria-live="polite">
-        Previewing <strong data-axis-label>Micro</strong>.
-    </p>
-</section>
-
-<section class="game-api-demo" id="games" data-game-api>
-    <div class="section-heading game-api-heading">
-        <div>
-            <p class="eyebrow">Development API test</p>
-            <h2>Seeded games, loaded live.</h2>
-        </div>
-        <p class="game-api-intro">
-            This panel reads the development SQLite data through the same JSON
-            and image URLs the atlas UI will use.
-        </p>
-    </div>
-
-    <p class="game-api-status" data-game-status role="status">
-        Loading games from <code>/api/games</code>&hellip;
-    </p>
-
-    <div class="game-api-layout">
-        <div class="game-list-panel">
-            <div class="game-list-heading">
-                <strong>Available games</strong>
-                <span data-game-count>Waiting for API</span>
-            </div>
-            <div class="game-list" data-game-list aria-live="polite"></div>
-        </div>
-
-        <article class="game-detail" data-game-detail aria-live="polite">
-            <div class="game-detail-placeholder">
-                <span aria-hidden="true">MMM</span>
-                <p>Select a seeded game to inspect its details and raw votes.</p>
-            </div>
+            <span>Requires calculating, strategizing, and long term planning</span>
         </article>
     </div>
+</section>
 
-    <noscript>
-        <p class="game-api-error">JavaScript is required to exercise the API from this page.</p>
-    </noscript>
+<section class="game-api-demo atlas-launch" id="games">
+    <a class="atlas-launch-action" asp-page="/Atlas">
+        <span>
+            <span class="eyebrow">The living atlas</span>
+            <strong>Explore the full game atlas.</strong>
+            <span>
+                Pan, zoom, filter, and inspect how community-rated games are
+                distributed across Micro, Meso, and Macro.
+            </span>
+        </span>
+        <span class="atlas-launch-arrow" aria-hidden="true">→</span>
+    </a>
 </section>
 
 <section class="about" id="about">
