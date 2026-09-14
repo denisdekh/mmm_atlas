@@ -11,6 +11,7 @@ using MMMAtlas.Voting;
 
 var builder = WebApplication.CreateBuilder(args);
 var buildPolicy = AtlasBuildPolicy.Current;
+builder.Logging.AddAtlasFileLogging(builder.Configuration, builder.Environment.ContentRootPath);
 
 var steamApiKey = builder.Configuration["Steam:ApiKey"]
     ?? throw new InvalidOperationException("Steam:ApiKey is not configured.");
