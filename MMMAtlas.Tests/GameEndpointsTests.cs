@@ -25,6 +25,23 @@ namespace MMMAtlas.Tests;
 public sealed class GameEndpointsTests
 {
     [TestMethod]
+    public async Task ProductionRuntimeServesStaticAssetsFromBuildOutput()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/css/site.css");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual(
+            "text/css",
+            response.Content.Headers.ContentType?.MediaType);
+        StringAssert.Contains(
+            await response.Content.ReadAsStringAsync(),
+            ":root");
+    }
+
+    [TestMethod]
     public async Task LoginDefersSteamDataPermissionUntilAfterSignIn()
     {
         await using var factory = new AtlasApplicationFactory();

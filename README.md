@@ -77,6 +77,12 @@ Build a production artifact with:
 dotnet publish MMMAtlas/MMMAtlas.csproj -c Production
 ```
 
+The HTTP-only `production` launch profile does not redirect to HTTPS. HTTPS
+redirection is enabled automatically when the app has an HTTPS URL or Kestrel
+endpoint. For TLS terminated by a reverse proxy, enable app-level redirects
+explicitly with `HttpsRedirection__Enabled=true`; set
+`HttpsRedirection__HttpsPort` when the public port is not 443.
+
 To opt into the retained seed script for UI testing, set the development
 configuration flag before starting the application:
 

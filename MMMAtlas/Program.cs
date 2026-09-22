@@ -11,6 +11,9 @@ using MMMAtlas.Voting;
 
 var builder = WebApplication.CreateBuilder(args);
 var buildPolicy = AtlasBuildPolicy.Current;
+var httpsRedirection = HttpsRedirectionPolicy.From(builder.Configuration);
+builder.WebHost.UseStaticWebAssets();
+builder.Logging.AddAtlasFileLogging(builder.Configuration, builder.Environment.ContentRootPath);
 
 var steamApiKey = builder.Configuration["Steam:ApiKey"]
     ?? throw new InvalidOperationException("Steam:ApiKey is not configured.");
@@ -19,6 +22,13 @@ builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton(buildPolicy);
+if (httpsRedirection.Enabled)
+{
+    builder.Services.AddHttpsRedirection(options =>
+    {
+        options.HttpsPort = httpsRedirection.HttpsPort;
+    });
+}
 
 builder.Services.AddSingleton(new SteamApiOptions
 {
@@ -214,7 +224,10 @@ app.UseWhen(
     branch => branch.UseStatusCodePagesWithReExecute(
         "/not-found",
         createScopeForStatusCodePages: true));
-app.UseHttpsRedirection();
+if (httpsRedirection.Enabled)
+{
+    app.UseHttpsRedirection();
+}
 app.UseRouting();
 app.UseAuthentication();
 app.UseMiddleware<OperationalRequestLoggingMiddleware>();
