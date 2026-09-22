@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 
 namespace MMMAtlas.Data;
 
-public static class DevelopmentDatabase
+public static class DatabaseInitializer
 {
     private const string SchemaResourceName =
         "MMMAtlas.Data.SQLiteTableSchemas.sql";

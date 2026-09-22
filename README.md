@@ -70,6 +70,8 @@ Application behavior is selected at compile time rather than inferred from
 an alias for `Production`. New commands and deployment configuration should use
 the explicit names above. The central `AtlasBuildPolicy` is the gate for future
 test-only features; do not use the runtime environment as a feature flag.
+Every mode applies the idempotent database schema at startup. Only Development
+and Test builds may load the optional development seed data.
 
 Build a production artifact with:
 

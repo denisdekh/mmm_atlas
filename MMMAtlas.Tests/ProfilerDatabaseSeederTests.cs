@@ -154,7 +154,7 @@ public sealed class ProfilerDatabaseSeederTests
             var database = DatabaseConnection.Create(
                 $"Data Source={path};Foreign Keys=True",
                 Directory.GetCurrentDirectory());
-            await DevelopmentDatabase.InitializeAsync(database, seedData: false);
+            await DatabaseInitializer.InitializeAsync(database, seedData: false);
             return new ProfilerDatabaseFixture(path, database);
         }
 

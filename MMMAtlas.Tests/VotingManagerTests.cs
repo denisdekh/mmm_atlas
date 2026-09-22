@@ -202,7 +202,7 @@ public sealed class VotingManagerTests
     }
 
     [TestMethod]
-    public async Task DevelopmentMigrationRemovesLegacyIconUrlColumn()
+    public async Task DatabaseMigrationRemovesLegacyIconUrlColumn()
     {
         using (var connection =
             new SqliteConnection($"Data Source={_databasePath}"))
@@ -214,7 +214,7 @@ public sealed class VotingManagerTests
             addCommand.ExecuteNonQuery();
         }
 
-        await DevelopmentDatabase.InitializeAsync(
+        await DatabaseInitializer.InitializeAsync(
             DatabaseConnection.Create(
                 $"Data Source={_databasePath};Foreign Keys=True",
                 Directory.GetCurrentDirectory()),

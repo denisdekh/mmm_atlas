@@ -233,39 +233,37 @@ app.UseAuthentication();
 app.UseMiddleware<OperationalRequestLoggingMiddleware>();
 app.UseAuthorization();
 
-if (buildPolicy.UsesDevelopmentDatabase)
-{
-    var seedOnStartup = !profilerEnabled
-        && builder.Configuration.GetValue<bool>(
-            "DevelopmentData:SeedOnStartup");
-    var databaseInitializationStarted = System.Diagnostics.Stopwatch
-        .GetTimestamp();
+var seedOnStartup = buildPolicy.UsesDevelopmentDatabase
+    && !profilerEnabled
+    && builder.Configuration.GetValue<bool>(
+        "DevelopmentData:SeedOnStartup");
+var databaseInitializationStarted = System.Diagnostics.Stopwatch
+    .GetTimestamp();
 
-    try
-    {
-        await DevelopmentDatabase.InitializeAsync(
-            database,
-            seedOnStartup);
-        app.Logger.LogInformation(
-            "Database {DatabaseName} initialized in {ElapsedMilliseconds:F1} ms; "
-            + "seed requested: {SeedOnStartup}.",
-            databaseConnectionName,
-            System.Diagnostics.Stopwatch.GetElapsedTime(
-                databaseInitializationStarted).TotalMilliseconds,
-            seedOnStartup);
-    }
-    catch (Exception exception)
-    {
-        app.Logger.LogCritical(
-            exception,
-            "Database {DatabaseName} initialization failed after "
-            + "{ElapsedMilliseconds:F1} ms; seed requested: {SeedOnStartup}.",
-            databaseConnectionName,
-            System.Diagnostics.Stopwatch.GetElapsedTime(
-                databaseInitializationStarted).TotalMilliseconds,
-            seedOnStartup);
-        throw;
-    }
+try
+{
+    await DatabaseInitializer.InitializeAsync(
+        database,
+        seedOnStartup);
+    app.Logger.LogInformation(
+        "Database {DatabaseName} initialized in {ElapsedMilliseconds:F1} ms; "
+        + "seed requested: {SeedOnStartup}.",
+        databaseConnectionName,
+        System.Diagnostics.Stopwatch.GetElapsedTime(
+            databaseInitializationStarted).TotalMilliseconds,
+        seedOnStartup);
+}
+catch (Exception exception)
+{
+    app.Logger.LogCritical(
+        exception,
+        "Database {DatabaseName} initialization failed after "
+        + "{ElapsedMilliseconds:F1} ms; seed requested: {SeedOnStartup}.",
+        databaseConnectionName,
+        System.Diagnostics.Stopwatch.GetElapsedTime(
+            databaseInitializationStarted).TotalMilliseconds,
+        seedOnStartup);
+    throw;
 }
 
 app.MapStaticAssets();
