@@ -96,6 +96,41 @@ test images, four users, twelve votes, ownership records, and aggregate
 statistics. Clear the environment variable or set it to `false` to return to
 the normal startup behavior.
 
+## Log files and verbosity
+
+Logs are written to the console and newline-delimited JSON files in
+`MMMAtlas/App_Data/Logs/mmm-atlas-YYYYMMDD.log` when running from the project.
+Published apps use `App_Data/Logs` under their content root. Each event retains
+its timestamp, severity, category, structured IDs, outcomes, latency, and exception
+when supplied by the log call. Files roll daily and at 10 MiB; the newest 14 files
+are retained (about 140 MiB, with possible single-event overshoot). Logs are ignored
+by Git. The process needs write permission to the log directory.
+
+The Development runtime profile defaults to `Debug`; Production defaults to
+`Information`. Microsoft and System categories default to `Warning` to reduce
+noise. Set `Logging:LogLevel:Default` or individual category levels in
+`appsettings.json` / `appsettings.Development.json`. Valid values are `Trace`,
+`Debug`, `Information`, `Warning`, `Error`, `Critical`, and `None`.
+
+Override settings at launch (arguments after `--` are passed to the app):
+
+```powershell
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Development --launch-profile http -- --Logging:LogLevel:Default=Trace
+dotnet run --project MMMAtlas/MMMAtlas.csproj -c Production --launch-profile production -- --Logging:LogLevel:Default=Warning
+```
+
+Alternatively set `Logging__LogLevel__Default=Debug` in environment variables
+(including Visual Studio launch-profile properties). Command-line arguments take
+precedence over environment variables, which override appsettings files.
+Runtime environment selects logging defaults; `-c` still selects the app's build
+mode, so pair the Production build with the production launch profile.
+
+`Logging:File:Path`, `FileSizeLimitBytes`, `RetainedFileCountLimit`, and `Enabled`
+configure file output; relative paths resolve against the app content root.
+For example, `--Logging:File:Path=C:/Logs/Atlas/mmm-atlas-.log` changes its location.
+File settings require a restart; standard log-level settings support appsettings
+reload. Console logging remains available if file output is disabled.
+
 ## Canvas load testing
 
 Launch the home-page Canvas with 3,000 deterministic synthetic points:
@@ -335,6 +370,6 @@ key in an appsettings file or commit it to source control.
 - ~~live updates to atlas~~
 - ~~add video embed to home page~~
 
-- buy domain
-- host on Azure
-- load testing for 1800 users over 2 weeks (* some kind of multiplier, since I'd expect more engagement than the ko-fi)
+- ~~buy domain~~
+- ~~host on github~~
+- ~~load testing for 37 req/s ~~
