@@ -15,7 +15,7 @@ export function initializeVoteDialog() {
 
     const form = dialog.querySelector("[data-vote-form]");
     const title = dialog.querySelector("[data-vote-title]");
-    const icon = dialog.querySelector("[data-vote-icon]");
+    const libraryCard = dialog.querySelector("[data-vote-library-card]");
     const error = dialog.querySelector("[data-vote-error]");
     const submitButton = dialog.querySelector("[data-vote-submit]");
     const publicCheckbox = dialog.querySelector("[data-vote-public]");
@@ -39,6 +39,10 @@ export function initializeVoteDialog() {
     let drag = null;
     let cropLoadId = 0;
 
+    libraryCard.addEventListener("error", () => {
+        libraryCard.hidden = true;
+    });
+
     const setScore = (name, value) => {
         const input = form.elements.namedItem(name);
         const output = form.querySelector(`[data-score-output="${name}"]`);
@@ -61,15 +65,10 @@ export function initializeVoteDialog() {
             setScore(name, hasVote ? trigger.dataset[name] : 5);
         }
 
-        if (trigger.dataset.gameIcon) {
-            icon.src = trigger.dataset.gameIcon;
-            icon.alt = `${trigger.dataset.gameTitle || "Game"} icon`;
-            icon.hidden = false;
-        } else {
-            icon.removeAttribute("src");
-            icon.alt = "";
-            icon.hidden = true;
-        }
+        libraryCard.src =
+            `https://cdn.cloudflare.steamstatic.com/steam/apps/${encodeURIComponent(trigger.dataset.steamAppId)}/library_600x900.jpg`;
+        libraryCard.alt = "";
+        libraryCard.hidden = false;
 
         dialog.showModal();
     };

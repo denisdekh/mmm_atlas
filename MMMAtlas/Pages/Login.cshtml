@@ -5,22 +5,40 @@
     ViewData["Page"] = "login";
 }
 
-<section>
-    <h1>Sign in through Steam</h1>
+<section class="sign-in-page">
+    <div class="sign-in-card">
+        <div class="sign-in-copy">
+            <p class="eyebrow">Your games, your ratings</p>
+            <h1>Sign in through Steam</h1>
 
-    <p>
-        Steam verifies your identity and returns your Steam ID so MMM Atlas can
-        create your account and sign you in.
-    </p>
+            <p class="sign-in-intro">
+                Steam verifies your identity and returns your Steam ID so MMM Atlas can
+                create your account and sign you in.
+            </p>
 
-    <p>
-        <strong>For a new account, MMM Atlas will not collect your Steam
-        profile, game library, or playtime unless and until you grant
-        permission.</strong> After signing in, you can opt in from your
-        dashboard if you want to use features that need that data.
-    </p>
+            <div class="sign-in-privacy">
+                <span aria-hidden="true">01</span>
+                <p>
+                    <strong>Your library stays private by default.</strong>
+                    MMM Atlas will not collect your Steam profile, game library,
+                    or playtime unless and until you grant permission from your
+                    dashboard. After signing in, you can opt in from your
+                    dashboard if you want to use features that need that data.
+                </p>
+            </div>
 
-    <form method="post">
-        <button type="submit">Continue to Steam</button>
-    </form>
+            <form method="post">
+                <button class="ui-button ui-button-primary" type="submit">
+                    Continue to Steam <span aria-hidden="true">→</span>
+                </button>
+            </form>
+        </div>
+
+        <div class="sign-in-graphic" aria-hidden="true">
+            <span class="sign-in-orbit sign-in-orbit-micro"></span>
+            <span class="sign-in-orbit sign-in-orbit-meso"></span>
+            <span class="sign-in-orbit sign-in-orbit-macro"></span>
+            <strong>M³</strong>
+        </div>
+    </div>
 </section>

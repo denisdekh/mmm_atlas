@@ -28,6 +28,8 @@ INSERT INTO SteamAccounts
 (
     UserId,
     SteamId,
+    PersonaName,
+    ProfileUrl,
     CreatedAtUtc,
     UpdatedAtUtc,
     LibraryCheckStatus,
@@ -35,11 +37,13 @@ INSERT INTO SteamAccounts
     LibrarySyncedAtUtc
 )
 VALUES
-    (1, 76561198000000001, datetime('now', '-30 days'), datetime('now'), 'Available', datetime('now'), datetime('now')),
-    (2, 76561198000000002, datetime('now', '-24 days'), datetime('now'), 'Available', datetime('now'), datetime('now')),
-    (3, 76561198000000003, datetime('now', '-16 days'), datetime('now'), 'Available', datetime('now'), datetime('now')),
-    (4, 76561198000000004, datetime('now', '-7 days'),  datetime('now'), 'Available', datetime('now'), datetime('now'))
+    (1, 76561198000000001, 'Atlas Explorer', 'https://steamcommunity.com/profiles/76561198000000001', datetime('now', '-30 days'), datetime('now'), 'Available', datetime('now'), datetime('now')),
+    (2, 76561198000000002, 'Private Pathfinder', 'https://steamcommunity.com/profiles/76561198000000002', datetime('now', '-24 days'), datetime('now'), 'Available', datetime('now'), datetime('now')),
+    (3, 76561198000000003, 'Systems Cartographer', 'https://steamcommunity.com/profiles/76561198000000003', datetime('now', '-16 days'), datetime('now'), 'Available', datetime('now'), datetime('now')),
+    (4, 76561198000000004, 'Private Strategist', 'https://steamcommunity.com/profiles/76561198000000004', datetime('now', '-7 days'),  datetime('now'), 'Available', datetime('now'), datetime('now'))
 ON CONFLICT (UserId) DO UPDATE SET
+    PersonaName = excluded.PersonaName,
+    ProfileUrl = excluded.ProfileUrl,
     UpdatedAtUtc = excluded.UpdatedAtUtc,
     LibraryCheckStatus = excluded.LibraryCheckStatus,
     LibraryCheckedAtUtc = excluded.LibraryCheckedAtUtc,

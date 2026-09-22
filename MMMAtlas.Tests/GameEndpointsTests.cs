@@ -136,7 +136,12 @@ public sealed class GameEndpointsTests
         Assert.IsNotNull(votes);
         Assert.HasCount(2, votes);
         Assert.AreEqual(
-            new VoteResponse(8, 6, 2, "Atlas Tester"),
+            new VoteResponse(
+                8,
+                6,
+                2,
+                "Atlas Tester",
+                "https://steamcommunity.com/id/atlas-tester"),
             votes[0]);
         Assert.AreEqual(
             new VoteResponse(4, 5, 7, null),
@@ -162,7 +167,12 @@ public sealed class GameEndpointsTests
         Assert.IsNotNull(votes);
         Assert.HasCount(1, votes);
         Assert.AreEqual(
-            new VoteResponse(8, 6, 2, "Atlas Tester"),
+            new VoteResponse(
+                8,
+                6,
+                2,
+                "Atlas Tester",
+                "https://steamcommunity.com/id/atlas-tester"),
             votes[0]);
     }
 
@@ -645,7 +655,8 @@ public sealed class GameEndpointsTests
         double MicroScore,
         double MesoScore,
         double MacroScore,
-        string? PublicProfileName);
+        string? PublicProfileName,
+        string? PublicProfileUrl = null);
 
     private sealed record VoteSubmissionResponse(
         decimal MicroScore,
@@ -943,10 +954,10 @@ public sealed class GameEndpointsTests
                     (20, 0);
 
                 INSERT INTO SteamAccounts
-                    (UserId, SteamId, DataCollectionEnabled, PersonaName)
+                    (UserId, SteamId, DataCollectionEnabled, PersonaName, ProfileUrl)
                 VALUES
-                    (10, 81985529216486895, 1, 'Atlas Tester'),
-                    (20, 1147797409030816545, 0, 'Private Tester');
+                    (10, 81985529216486895, 1, 'Atlas Tester', 'https://steamcommunity.com/id/atlas-tester'),
+                    (20, 1147797409030816545, 0, 'Private Tester', NULL);
 
                 INSERT INTO Votes VALUES
                     (10, 1, 8, 6, 2, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),

@@ -50,10 +50,19 @@ public static class SteamAccountEndpoints
         await connection.OpenAsync(cancellationToken);
 
         await using var command = connection.CreateCommand();
-        command.CommandText = sql;
+        command.CommandText = """
+            SELECT DataCollectionEnabled
+            FROM SteamAccounts
+            WHERE UserId = $userId;
+            """;
         command.Parameters.AddWithValue(
             "$userId",
             GetUserId(httpContext.User));
+
+        var dataCollectionEnabled = Convert.ToInt64(
+            await command.ExecuteScalarAsync(cancellationToken)) == 1;
+
+        command.CommandText = sql;
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -70,6 +79,8 @@ public static class SteamAccountEndpoints
         }
 
         httpContext.Response.Headers.CacheControl = "private, no-store";
+        httpContext.Response.Headers["X-Data-Collection-Enabled"] =
+            dataCollectionEnabled.ToString().ToLowerInvariant();
         return Results.Ok(games);
     }
 
