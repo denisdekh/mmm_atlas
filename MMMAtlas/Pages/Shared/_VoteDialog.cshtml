@@ -78,7 +78,19 @@
 
         <label class="vote-privacy-option">
             <input type="checkbox" name="isPublic" value="true" data-vote-public />
-            Make this vote public
+            <span>
+                Make this vote
+                <span class="axis-tooltip">
+                    <span
+                        class="axis-tooltip-trigger"
+                        tabindex="0"
+                        aria-describedby="vote-public-tooltip">public</span>
+                    <span
+                        class="axis-tooltip-bubble"
+                        id="vote-public-tooltip"
+                        role="tooltip">Your vote will be visible to others on the website - they will see your score as well as have access to your Steam profile. This can be changed later.</span>
+                </span>
+            </span>
         </label>
 
         <p class="vote-error" data-vote-error role="alert" hidden></p>

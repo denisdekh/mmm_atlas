@@ -1954,6 +1954,79 @@ body.atlas-fullscreen-lock {
     font-size: 0.7rem;
 }
 
+.dashboard-card form.dashboard-library-search {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16rem;
+    align-items: center;
+    gap: 1rem;
+    margin: 0;
+    padding: 1rem clamp(1.35rem, 3vw, 2rem);
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.015);
+}
+
+.dashboard-library-search-control {
+    position: relative;
+    min-width: 0;
+}
+
+.dashboard-library-search input {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.65rem 4.5rem 0.65rem 1rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    outline: none;
+    background: var(--background);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.85rem;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.dashboard-library-search input:focus {
+    border-color: rgba(96, 124, 251, 0.75);
+    box-shadow: 0 0 0 0.2rem rgba(96, 124, 251, 0.12);
+}
+
+.dashboard-library-search input::placeholder {
+    color: var(--muted);
+}
+
+.dashboard-library-search-control button {
+    position: absolute;
+    top: 50%;
+    right: 0.8rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 750;
+    transform: translateY(-50%);
+}
+
+.dashboard-library-search-control button:hover,
+.dashboard-library-search-control button:focus-visible {
+    color: var(--text);
+}
+
+.dashboard-library-search output {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+
+[data-dashboard-games-region],
+[data-dashboard-games-initial],
+[data-dashboard-games-results] {
+    width: 100%;
+}
+
 .dashboard-games {
     width: 100%;
     margin: 0;
@@ -1961,7 +2034,8 @@ body.atlas-fullscreen-lock {
     list-style: none;
 }
 
-.dashboard-games-card > .dashboard-games-empty {
+[data-dashboard-games-initial] > .dashboard-games-empty,
+[data-dashboard-games-results] > .dashboard-games-empty {
     width: 100%;
     max-width: none;
     min-height: 10rem;
@@ -2888,6 +2962,16 @@ body.atlas-fullscreen-lock {
     .dashboard-card-heading {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .dashboard-card form.dashboard-library-search {
+        grid-template-columns: 1fr;
+        gap: 0.65rem;
+    }
+
+    .dashboard-library-search output {
+        padding-inline: 0.5rem;
+        white-space: normal;
     }
 
     .dashboard-game {

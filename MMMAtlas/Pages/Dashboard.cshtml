@@ -121,60 +121,92 @@
                 <span class="dashboard-status">@Model.Dashboard.LibraryCheckStatus</span>
             </div>
 
-            @if (Model.Dashboard.MostPlayedGames.Count == 0)
+            @if (Model.Dashboard.DataCollectionEnabled)
             {
-                <p class="dashboard-games-empty">No game data is stored.</p>
+                <form
+                    class="dashboard-library-search"
+                    action="/dashboard"
+                    method="get"
+                    role="search"
+                    data-dashboard-library-search>
+                    <label class="visually-hidden" for="dashboard-library-query">Search your Steam library</label>
+                    <div class="dashboard-library-search-control">
+                        <input
+                            id="dashboard-library-query"
+                            name="q"
+                            type="search"
+                            maxlength="100"
+                            autocomplete="off"
+                            placeholder="Search your Steam library"
+                            data-dashboard-library-query />
+                        <button
+                            type="button"
+                            data-dashboard-library-clear
+                            hidden>Clear</button>
+                    </div>
+                    <output data-dashboard-library-status aria-live="polite">Search your complete stored library.</output>
+                </form>
             }
-            else
-            {
-                <ol class="dashboard-games">
-                    @foreach (var game in Model.Dashboard.MostPlayedGames)
+
+            <div data-dashboard-games-region>
+                <div data-dashboard-games-initial>
+                    @if (Model.Dashboard.MostPlayedGames.Count == 0)
                     {
-                        var hasVote = game.MicroScore is not null;
-                        <li class="dashboard-game">
-                            <img
-                                class="dashboard-game-artwork"
-                                src="https://cdn.cloudflare.steamstatic.com/steam/apps/@game.SteamAppId/library_600x900.jpg"
-                                alt=""
-                                width="48"
-                                height="72"
-                                loading="lazy" />
-                            <span class="dashboard-game-copy">
-                                @if (!game.NeedsAtlasIcon)
-                                {
+                        <p class="dashboard-games-empty">No game data is stored.</p>
+                    }
+                    else
+                    {
+                        <ol class="dashboard-games">
+                            @foreach (var game in Model.Dashboard.MostPlayedGames)
+                            {
+                                var hasVote = game.MicroScore is not null;
+                                <li class="dashboard-game">
+                                    <img
+                                        class="dashboard-game-artwork"
+                                        src="https://cdn.cloudflare.steamstatic.com/steam/apps/@game.SteamAppId/library_600x900.jpg"
+                                        alt=""
+                                        width="48"
+                                        height="72"
+                                        loading="lazy" />
+                                    <span class="dashboard-game-copy">
+                                        @if (!game.NeedsAtlasIcon)
+                                        {
+                                            <button
+                                                type="button"
+                                                class="game-name-button"
+                                                data-game-detail-trigger
+                                                data-game-id="@game.GameId"
+                                                data-game-title="@game.Name">@game.Name</button>
+                                        }
+                                        else
+                                        {
+                                            <strong>@game.Name</strong>
+                                        }
+                                        <small>@((game.PlaytimeForeverMinutes / 60d).ToString("0.#")) hours played</small>
+                                    </span>
                                     <button
                                         type="button"
-                                        class="game-name-button"
-                                        data-game-detail-trigger
+                                        class="ui-button ui-button-compact"
+                                        data-vote-trigger
                                         data-game-id="@game.GameId"
-                                        data-game-title="@game.Name">@game.Name</button>
-                                }
-                                else
-                                {
-                                    <strong>@game.Name</strong>
-                                }
-                                <small>@((game.PlaytimeForeverMinutes / 60d).ToString("0.#")) hours played</small>
-                            </span>
-                            <button
-                                type="button"
-                                class="ui-button ui-button-compact"
-                                data-vote-trigger
-                                data-game-id="@game.GameId"
-                                data-steam-app-id="@game.SteamAppId"
-                                data-game-title="@game.Name"
-                                data-game-icon="@(game.HasAtlasIcon ? $"/api/games/{game.GameId}/atlas-icon" : null)"
-                                data-library-card-url="/api/games/@game.GameId/library-card"
-                                data-needs-atlas-icon="@game.NeedsAtlasIcon.ToString().ToLowerInvariant()"
-                                data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                data-is-public="@game.IsPublic.ToString().ToLowerInvariant()">
-                                @(hasVote ? "Amend vote" : "Submit vote")
-                            </button>
-                        </li>
+                                        data-steam-app-id="@game.SteamAppId"
+                                        data-game-title="@game.Name"
+                                        data-game-icon="@(game.HasAtlasIcon ? $"/api/games/{game.GameId}/atlas-icon" : null)"
+                                        data-library-card-url="/api/games/@game.GameId/library-card"
+                                        data-needs-atlas-icon="@game.NeedsAtlasIcon.ToString().ToLowerInvariant()"
+                                        data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                        data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                        data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                        data-is-public="@game.IsPublic.ToString().ToLowerInvariant()">
+                                        @(hasVote ? "Amend vote" : "Submit vote")
+                                    </button>
+                                </li>
+                            }
+                        </ol>
                     }
-                </ol>
-            }
+                </div>
+                <div data-dashboard-games-results hidden></div>
+            </div>
         </section>
         </div>
     }
@@ -210,4 +242,5 @@
 
 @section Scripts {
     <script type="module" src="~/js/dashboard-data-consent.js" asp-append-version="true"></script>
+    <script type="module" src="~/js/dashboard-library-search.js" asp-append-version="true"></script>
 }
