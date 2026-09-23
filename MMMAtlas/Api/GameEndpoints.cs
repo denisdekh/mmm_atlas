@@ -497,7 +497,13 @@ public static class GameEndpoints
                         AND account.PersonaName IS NOT NULL
                     THEN account.PersonaName
                     ELSE NULL
-                END AS PublicProfileName
+                END AS PublicProfileName,
+                CASE
+                    WHEN vote.IsPublic = 1
+                        AND account.PersonaName IS NOT NULL
+                    THEN account.ProfileUrl
+                    ELSE NULL
+                END AS PublicProfileUrl
             FROM Votes AS vote
             LEFT JOIN SteamAccounts AS account
                 ON account.UserId = vote.UserId
@@ -583,7 +589,9 @@ public static class GameEndpoints
                 MesoScore: reader.GetDouble(1),
                 MacroScore: reader.GetDouble(2),
                 PublicProfileName:
-                    reader.IsDBNull(3) ? null : reader.GetString(3)));
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                PublicProfileUrl:
+                    reader.IsDBNull(4) ? null : reader.GetString(4)));
         }
 
         return Results.Ok(results);
@@ -668,5 +676,6 @@ public static class GameEndpoints
         double MicroScore,
         double MesoScore,
         double MacroScore,
-        string? PublicProfileName);
+        string? PublicProfileName,
+        string? PublicProfileUrl);
 }

@@ -1,11 +1,10 @@
 <dialog class="vote-dialog" data-vote-dialog aria-labelledby="vote-dialog-title">
     <div class="vote-dialog-header">
-        <h2 id="vote-dialog-title" data-vote-title>Vote</h2>
-        <button type="button" data-vote-close aria-label="Close vote window">Close</button>
-    </div>
-
-    <div class="vote-dialog-game">
-        <img data-vote-icon alt="" width="64" height="64" hidden />
+        <div class="vote-dialog-heading">
+            <img data-vote-library-card alt="" width="48" height="72" hidden />
+            <h2 id="vote-dialog-title" data-vote-title>Vote</h2>
+        </div>
+        <button class="dialog-close-button" type="button" data-vote-close aria-label="Close vote window">Close</button>
     </div>
 
     <form data-vote-form>
@@ -77,16 +76,28 @@
             <output data-score-output="macroScore">5.0</output>
         </div>
 
-        <label>
+        <label class="vote-privacy-option">
             <input type="checkbox" name="isPublic" value="true" data-vote-public />
-            Make this vote public
+            <span>
+                Make this vote
+                <span class="axis-tooltip">
+                    <span
+                        class="axis-tooltip-trigger"
+                        tabindex="0"
+                        aria-describedby="vote-public-tooltip">public</span>
+                    <span
+                        class="axis-tooltip-bubble"
+                        id="vote-public-tooltip"
+                        role="tooltip">Your vote will be visible to others on the website - they will see your score as well as have access to your Steam profile. This can be changed later.</span>
+                </span>
+            </span>
         </label>
 
         <p class="vote-error" data-vote-error role="alert" hidden></p>
 
         <div class="vote-dialog-actions">
-            <button type="button" data-vote-cancel>Cancel</button>
-            <button type="submit" data-vote-submit>Submit vote</button>
+            <button class="ui-button" type="button" data-vote-cancel>Cancel</button>
+            <button class="ui-button ui-button-primary" type="submit" data-vote-submit>Submit vote</button>
         </div>
     </form>
 </dialog>
@@ -97,10 +108,10 @@
     aria-labelledby="atlas-crop-dialog-title">
     <div class="vote-dialog-header">
         <h2 id="atlas-crop-dialog-title">Choose the atlas icon</h2>
-        <button type="button" data-crop-close aria-label="Close crop window">Close</button>
+        <button class="dialog-close-button" type="button" data-crop-close aria-label="Close crop window">Close</button>
     </div>
 
-    <p>
+    <p class="atlas-crop-instructions">
         Drag the library card to frame a circular icon. The crop is saved at
         96 pixels in diameter.
     </p>
@@ -129,8 +140,8 @@
     <p class="vote-error" data-crop-error role="alert" hidden></p>
 
     <div class="vote-dialog-actions">
-        <button type="button" data-crop-cancel>Back</button>
-        <button type="button" data-crop-save disabled>Save icon and vote</button>
+        <button class="ui-button" type="button" data-crop-cancel>Back</button>
+        <button class="ui-button ui-button-primary" type="button" data-crop-save disabled>Save icon and vote</button>
     </div>
 </dialog>
 

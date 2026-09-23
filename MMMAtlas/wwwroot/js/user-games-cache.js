@@ -1,6 +1,7 @@
 const ownedGames = new Map();
 const pendingVotes = new Map();
 let loadPromise = null;
+let dataCollectionEnabled = null;
 
 export function initializeUserGamesCache() {
     if (document.body.dataset.authenticated !== "true") {
@@ -16,6 +17,11 @@ export function initializeUserGamesCache() {
                     throw new Error(`Owned games request failed with HTTP ${response.status}.`);
                 }
 
+                const collectionHeader = response.headers.get(
+                    "X-Data-Collection-Enabled");
+                dataCollectionEnabled = collectionHeader === null
+                    ? true
+                    : collectionHeader === "true";
                 const games = await response.json();
                 ownedGames.clear();
                 for (const game of games) {
@@ -42,6 +48,14 @@ export function initializeUserGamesCache() {
 export async function getOwnedGame(gameId) {
     await initializeUserGamesCache();
     return ownedGames.get(String(gameId)) ?? null;
+}
+
+export async function getOwnedGameState(gameId) {
+    await initializeUserGamesCache();
+    return {
+        ownedGame: ownedGames.get(String(gameId)) ?? null,
+        dataCollectionEnabled: dataCollectionEnabled ?? true
+    };
 }
 
 export function updateCachedVote(gameId, vote) {

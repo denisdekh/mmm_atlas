@@ -74,6 +74,9 @@ public sealed class GameEndpointsTests
         StringAssert.Contains(html, "Allow data collection");
         Assert.IsFalse(HasEnabledCheckbox(html));
         Assert.IsFalse(html.Contains(
+            "data-dashboard-library-search",
+            StringComparison.Ordinal));
+        Assert.IsFalse(html.Contains(
             "data-steam-opt-out-dialog",
             StringComparison.Ordinal));
     }
@@ -93,6 +96,7 @@ public sealed class GameEndpointsTests
         StringAssert.Contains(
             html,
             "Your submitted votes will not be deleted.");
+        StringAssert.Contains(html, "data-dashboard-library-search");
         StringAssert.Contains(html, "data-steam-opt-out-dialog");
         Assert.IsFalse(HasEnabledCheckbox(html));
     }
@@ -136,7 +140,12 @@ public sealed class GameEndpointsTests
         Assert.IsNotNull(votes);
         Assert.HasCount(2, votes);
         Assert.AreEqual(
-            new VoteResponse(8, 6, 2, "Atlas Tester"),
+            new VoteResponse(
+                8,
+                6,
+                2,
+                "Atlas Tester",
+                "https://steamcommunity.com/id/atlas-tester"),
             votes[0]);
         Assert.AreEqual(
             new VoteResponse(4, 5, 7, null),
@@ -162,7 +171,12 @@ public sealed class GameEndpointsTests
         Assert.IsNotNull(votes);
         Assert.HasCount(1, votes);
         Assert.AreEqual(
-            new VoteResponse(8, 6, 2, "Atlas Tester"),
+            new VoteResponse(
+                8,
+                6,
+                2,
+                "Atlas Tester",
+                "https://steamcommunity.com/id/atlas-tester"),
             votes[0]);
     }
 
@@ -472,6 +486,75 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
+    public async Task SearchOwnedGamesRequiresAuthentication()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+
+        var response = await client.GetAsync("/api/me/games/search?q=game");
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task SearchOwnedGamesReturnsMatchingLibraryRowsWithVoteState()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        var games = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+            "/api/me/games/search?q=WITHOUT");
+
+        Assert.IsNotNull(games);
+        Assert.HasCount(1, games);
+        Assert.AreEqual(
+            new LibrarySearchGameResponse(
+                2,
+                5678,
+                "Game Without Votes",
+                60,
+                false,
+                null,
+                null,
+                null,
+                false,
+                true,
+                false),
+            games[0]);
+
+        var votedGames =
+            await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+                "/api/me/games/search?q=Test");
+        Assert.IsNotNull(votedGames);
+        Assert.HasCount(1, votedGames);
+        Assert.AreEqual(
+            new LibrarySearchGameResponse(
+                1,
+                1234,
+                "Test Game",
+                120,
+                true,
+                8,
+                6,
+                2,
+                true,
+                false,
+                false),
+            votedGames[0]);
+
+        var otherUsersGames =
+            await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+                "/api/me/games/search?q=Real");
+        Assert.IsNotNull(otherUsersGames);
+        Assert.IsEmpty(otherUsersGames);
+    }
+
+    [TestMethod]
     public async Task SubmitVoteAmendsTheUsersVote()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -645,7 +728,8 @@ public sealed class GameEndpointsTests
         double MicroScore,
         double MesoScore,
         double MacroScore,
-        string? PublicProfileName);
+        string? PublicProfileName,
+        string? PublicProfileUrl = null);
 
     private sealed record VoteSubmissionResponse(
         decimal MicroScore,
@@ -661,6 +745,19 @@ public sealed class GameEndpointsTests
         double? MesoScore,
         double? MacroScore,
         bool IsPublic);
+
+    private sealed record LibrarySearchGameResponse(
+        long GameId,
+        int SteamAppId,
+        string Name,
+        int PlaytimeForeverMinutes,
+        bool HasVoted,
+        double? MicroScore,
+        double? MesoScore,
+        double? MacroScore,
+        bool IsPublic,
+        bool NeedsAtlasIcon,
+        bool HasAtlasIcon);
 
     private sealed record ProblemResponse(int Status, string Title);
 
@@ -943,10 +1040,10 @@ public sealed class GameEndpointsTests
                     (20, 0);
 
                 INSERT INTO SteamAccounts
-                    (UserId, SteamId, DataCollectionEnabled, PersonaName)
+                    (UserId, SteamId, DataCollectionEnabled, PersonaName, ProfileUrl)
                 VALUES
-                    (10, 81985529216486895, 1, 'Atlas Tester'),
-                    (20, 1147797409030816545, 0, 'Private Tester');
+                    (10, 81985529216486895, 1, 'Atlas Tester', 'https://steamcommunity.com/id/atlas-tester'),
+                    (20, 1147797409030816545, 0, 'Private Tester', NULL);
 
                 INSERT INTO Votes VALUES
                     (10, 1, 8, 6, 2, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),

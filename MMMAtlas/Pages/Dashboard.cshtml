@@ -5,58 +5,73 @@
     ViewData["Page"] = "dashboard";
 }
 
-<section>
-    <h1>Steam dashboard</h1>
+<section class="dashboard-page">
+    <header class="dashboard-heading">
+        <div>
+            <p class="eyebrow">Your MMM Atlas account</p>
+            <h1>Steam dashboard</h1>
+        </div>
+        <p>
+            Manage your Steam data, vote privacy, and the games you play most.
+        </p>
+    </header>
 
     @if (Model.Notice == "erased")
     {
-        <p>Your stored Steam profile and library data has been cleared. Your submitted votes were retained.</p>
+        <p class="dashboard-notice">Your stored Steam profile and library data has been cleared. Your submitted votes were retained.</p>
     }
     else if (Model.Notice == "collection-enabled")
     {
-        <p>Data collection is enabled. Your Steam profile and library have been fetched.</p>
+        <p class="dashboard-notice">Data collection is enabled. Your Steam profile and library have been fetched.</p>
     }
     else if (Model.Notice == "votes-private")
     {
-        <p>All of your votes are now private.</p>
+        <p class="dashboard-notice">All of your votes are now private.</p>
     }
 
     @if (Model.Dashboard is null)
     {
-        <p>Your Steam account could not be loaded.</p>
+        <div class="dashboard-empty">
+            <p>Your Steam account could not be loaded.</p>
+        </div>
     }
     else
     {
-        <section>
-            <h2>Profile</h2>
+        <div class="dashboard-grid">
+        <section class="dashboard-card dashboard-profile-card">
+            <p class="dashboard-card-index">01 / Profile</p>
 
             @if (Model.Dashboard.PersonaName is not null)
             {
-                @if (Model.Dashboard.AvatarUrl is not null)
-                {
-                    <img
-                        src="@Model.Dashboard.AvatarUrl"
-                        alt=""
-                        width="96"
-                        height="96" />
-                }
+                <div class="dashboard-profile">
+                    @if (Model.Dashboard.AvatarUrl is not null)
+                    {
+                        <img
+                            src="@Model.Dashboard.AvatarUrl"
+                            alt=""
+                            width="96"
+                            height="96" />
+                    }
 
-                <p>@Model.Dashboard.PersonaName</p>
+                    <div>
+                        <h2>@Model.Dashboard.PersonaName</h2>
 
-                @if (Model.Dashboard.ProfileUrl is not null)
-                {
-                    <p>
-                        <a href="@Model.Dashboard.ProfileUrl">Open Steam profile</a>
-                    </p>
-                }
+                        @if (Model.Dashboard.ProfileUrl is not null)
+                        {
+                            <a class="dashboard-text-link" href="@Model.Dashboard.ProfileUrl">Open Steam profile <span aria-hidden="true">↗</span></a>
+                        }
+                    </div>
+                </div>
             }
             else
             {
+                <h2>Steam profile</h2>
                 <p>No Steam profile data is stored.</p>
             }
         </section>
 
-        <section>
+        <section class="dashboard-card">
+            <p class="dashboard-card-index">02 / Visibility</p>
             <h2>Vote privacy</h2>
             <p>
                 Private votes still contribute to game scores, but your Steam
@@ -64,11 +79,12 @@
             </p>
             <form method="post" action="/api/me/votes/private">
                 @Html.AntiForgeryToken()
-                <button type="submit">Make all votes private</button>
+                <button class="ui-button" type="submit">Make all votes private</button>
             </form>
         </section>
 
-        <section>
+        <section class="dashboard-card">
+            <p class="dashboard-card-index">03 / Permissions</p>
             <h2>Data collection</h2>
 
             @if (Model.Dashboard.DataCollectionEnabled)
@@ -77,7 +93,7 @@
                     Collection is enabled for your Steam profile, game library,
                     and playtime.
                 </p>
-                <button type="button" data-steam-opt-out>
+                <button class="ui-button" type="button" data-steam-opt-out>
                     Stop data collection
                 </button>
             }
@@ -91,64 +107,108 @@
                 <form method="post" action="/api/me/steam-data/consent">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="enabled" value="true" />
-                    <button type="submit">Allow data collection</button>
+                    <button class="ui-button ui-button-primary" type="submit">Allow data collection</button>
                 </form>
             }
         </section>
 
-        <section>
-            <h2>Most played games</h2>
-            <p>Library status: @Model.Dashboard.LibraryCheckStatus</p>
+        <section class="dashboard-card dashboard-games-card">
+            <div class="dashboard-card-heading">
+                <div>
+                    <p class="dashboard-card-index">04 / Library</p>
+                    <h2>Most played games</h2>
+                </div>
+                <span class="dashboard-status">@Model.Dashboard.LibraryCheckStatus</span>
+            </div>
 
-            @if (Model.Dashboard.MostPlayedGames.Count == 0)
+            @if (Model.Dashboard.DataCollectionEnabled)
             {
-                <p>No game data is stored.</p>
+                <form
+                    class="dashboard-library-search"
+                    action="/dashboard"
+                    method="get"
+                    role="search"
+                    data-dashboard-library-search>
+                    <label class="visually-hidden" for="dashboard-library-query">Search your Steam library</label>
+                    <div class="dashboard-library-search-control">
+                        <input
+                            id="dashboard-library-query"
+                            name="q"
+                            type="search"
+                            maxlength="100"
+                            autocomplete="off"
+                            placeholder="Search your Steam library"
+                            data-dashboard-library-query />
+                        <button
+                            type="button"
+                            data-dashboard-library-clear
+                            hidden>Clear</button>
+                    </div>
+                    <output data-dashboard-library-status aria-live="polite">Search your complete stored library.</output>
+                </form>
             }
-            else
-            {
-                <ol>
-                    @foreach (var game in Model.Dashboard.MostPlayedGames)
+
+            <div data-dashboard-games-region>
+                <div data-dashboard-games-initial>
+                    @if (Model.Dashboard.MostPlayedGames.Count == 0)
                     {
-                        var hasVote = game.MicroScore is not null;
-                        <li class="dashboard-game">
-                            <span>
-                                @if (!game.NeedsAtlasIcon)
-                                {
+                        <p class="dashboard-games-empty">No game data is stored.</p>
+                    }
+                    else
+                    {
+                        <ol class="dashboard-games">
+                            @foreach (var game in Model.Dashboard.MostPlayedGames)
+                            {
+                                var hasVote = game.MicroScore is not null;
+                                <li class="dashboard-game">
+                                    <img
+                                        class="dashboard-game-artwork"
+                                        src="https://cdn.cloudflare.steamstatic.com/steam/apps/@game.SteamAppId/library_600x900.jpg"
+                                        alt=""
+                                        width="48"
+                                        height="72"
+                                        loading="lazy" />
+                                    <span class="dashboard-game-copy">
+                                        @if (!game.NeedsAtlasIcon)
+                                        {
+                                            <button
+                                                type="button"
+                                                class="game-name-button"
+                                                data-game-detail-trigger
+                                                data-game-id="@game.GameId"
+                                                data-game-title="@game.Name">@game.Name</button>
+                                        }
+                                        else
+                                        {
+                                            <strong>@game.Name</strong>
+                                        }
+                                        <small>@((game.PlaytimeForeverMinutes / 60d).ToString("0.#")) hours played</small>
+                                    </span>
                                     <button
                                         type="button"
-                                        class="game-name-button"
-                                        data-game-detail-trigger
+                                        class="ui-button ui-button-compact"
+                                        data-vote-trigger
                                         data-game-id="@game.GameId"
-                                        data-game-title="@game.Name">@game.Name</button>
-                                }
-                                else
-                                {
-                                    @game.Name
-                                }
-                                —
-                                @((game.PlaytimeForeverMinutes / 60d).ToString("0.#")) hours
-                            </span>
-                            <button
-                                type="button"
-                                data-vote-trigger
-                                data-game-id="@game.GameId"
-                                data-steam-app-id="@game.SteamAppId"
-                                data-game-title="@game.Name"
-                                data-game-icon="@(game.HasAtlasIcon ? $"/api/games/{game.GameId}/atlas-icon" : null)"
-                                data-library-card-url="/api/games/@game.GameId/library-card"
-                                data-needs-atlas-icon="@game.NeedsAtlasIcon.ToString().ToLowerInvariant()"
-                                data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                data-is-public="@game.IsPublic.ToString().ToLowerInvariant()">
-                                @(hasVote ? "Amend vote" : "Submit vote")
-                            </button>
-                        </li>
+                                        data-steam-app-id="@game.SteamAppId"
+                                        data-game-title="@game.Name"
+                                        data-game-icon="@(game.HasAtlasIcon ? $"/api/games/{game.GameId}/atlas-icon" : null)"
+                                        data-library-card-url="/api/games/@game.GameId/library-card"
+                                        data-needs-atlas-icon="@game.NeedsAtlasIcon.ToString().ToLowerInvariant()"
+                                        data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                        data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                        data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
+                                        data-is-public="@game.IsPublic.ToString().ToLowerInvariant()">
+                                        @(hasVote ? "Amend vote" : "Submit vote")
+                                    </button>
+                                </li>
+                            }
+                        </ol>
                     }
-                </ol>
-            }
+                </div>
+                <div data-dashboard-games-results hidden></div>
+            </div>
         </section>
-
+        </div>
     }
 </section>
 
@@ -161,7 +221,7 @@
         aria-describedby="steam-opt-out-description">
         <div class="vote-dialog-header">
             <h2 id="steam-opt-out-title">Stop data collection?</h2>
-            <button type="button" data-steam-opt-out-cancel aria-label="Close">
+            <button class="dialog-close-button" type="button" data-steam-opt-out-cancel aria-label="Close">
                 Close
             </button>
         </div>
@@ -173,8 +233,8 @@
             @Html.AntiForgeryToken()
             <input type="hidden" name="enabled" value="false" />
             <div class="vote-dialog-actions">
-                <button type="button" data-steam-opt-out-cancel>Keep collection enabled</button>
-                <button type="submit">Stop collection and delete game data</button>
+                <button class="ui-button" type="button" data-steam-opt-out-cancel>Keep collection enabled</button>
+                <button class="ui-button ui-button-danger" type="submit">Stop collection and delete game data</button>
             </div>
         </form>
     </dialog>
@@ -182,4 +242,5 @@
 
 @section Scripts {
     <script type="module" src="~/js/dashboard-data-consent.js" asp-append-version="true"></script>
+    <script type="module" src="~/js/dashboard-library-search.js" asp-append-version="true"></script>
 }

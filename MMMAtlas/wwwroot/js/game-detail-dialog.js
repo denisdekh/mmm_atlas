@@ -1,4 +1,4 @@
-import { getOwnedGame } from "./user-games-cache.js";
+import { getOwnedGameState } from "./user-games-cache.js";
 import { createAxisTooltip } from "./axis-tooltips.js";
 
 const gameCache = new Map();
@@ -29,9 +29,12 @@ export function initializeGameDetailDialog() {
         }
 
         try {
-            const [game, ownedGame] = await Promise.all([
+            const [game, ownershipState] = await Promise.all([
                 getGame(gameId),
-                getOwnedGame(gameId).catch(() => null)
+                getOwnedGameState(gameId).catch(() => ({
+                    ownedGame: null,
+                    dataCollectionEnabled: true
+                }))
             ]);
             const publicVotes = getPublicVotesState(gameId);
             await ensurePublicVotesPage(publicVotes, 1);
@@ -41,7 +44,7 @@ export function initializeGameDetailDialog() {
             }
 
             title.textContent = game.name;
-            renderGame(content, game, publicVotes, ownedGame);
+            renderGame(content, game, publicVotes, ownershipState);
         } catch (error) {
             if (currentRequestId === requestId) {
                 renderError(content, error.message);
@@ -183,7 +186,7 @@ function renderError(content, message) {
     content.replaceChildren(error);
 }
 
-function renderGame(content, game, publicVotes, ownedGame) {
+function renderGame(content, game, publicVotes, ownershipState) {
     const artwork = document.createElement("div");
     artwork.className = "game-detail-artwork";
 
@@ -204,8 +207,14 @@ function renderGame(content, game, publicVotes, ownedGame) {
     }, { once: true });
     artwork.append(image);
 
-    const body = document.createElement("div");
-    body.className = "game-detail-dialog-body";
+    const overview = document.createElement("section");
+    overview.className = "game-detail-overview";
+
+    const artworkColumn = document.createElement("div");
+    artworkColumn.className = "game-detail-artwork-column";
+
+    const overviewCopy = document.createElement("div");
+    overviewCopy.className = "game-detail-overview-copy";
 
     const meta = document.createElement("p");
     meta.className = "eyebrow";
@@ -216,6 +225,21 @@ function renderGame(content, game, publicVotes, ownedGame) {
     const description = document.createElement("p");
     description.className = "game-detail-description";
     description.textContent = game.summary;
+
+    const credits = document.createElement("dl");
+    credits.className = "game-detail-credits";
+    appendCredit(credits, "Developer", game.developers);
+    appendCredit(credits, "Publisher", game.publishers);
+
+    artworkColumn.append(artwork);
+    overviewCopy.append(meta, description);
+    if (credits.children.length > 0) {
+        overviewCopy.append(credits);
+    }
+    overview.append(artworkColumn, overviewCopy);
+
+    const scoreSection = document.createElement("section");
+    scoreSection.className = "game-detail-score-section";
 
     const scoreHeader = document.createElement("div");
     scoreHeader.className = "game-detail-score-header";
@@ -238,15 +262,29 @@ function renderGame(content, game, publicVotes, ownedGame) {
         createAxisBar("Macro", game.macroRatio, maximumRatio, "macro")
     );
 
-    body.append(meta, description, scoreHeader, chart);
-    body.append(createVotingControl(game, ownedGame));
+    scoreSection.append(scoreHeader, chart);
+    scoreSection.append(createVotingControl(
+        game,
+        ownershipState.ownedGame,
+        ownershipState.dataCollectionEnabled));
 
     const votesSection = document.createElement("section");
     votesSection.className = "game-detail-votes-section";
-    body.append(votesSection);
     renderPublicVotesPage(votesSection, publicVotes, 1);
 
-    content.replaceChildren(artwork, body);
+    content.replaceChildren(overview, scoreSection, votesSection);
+}
+
+function appendCredit(credits, label, names) {
+    if (!Array.isArray(names) || names.length === 0) {
+        return;
+    }
+
+    const term = document.createElement("dt");
+    term.textContent = names.length === 1 ? label : `${label}s`;
+    const description = document.createElement("dd");
+    description.textContent = names.join(", ");
+    credits.append(term, description);
 }
 
 function renderPublicVotesPage(section, state, page) {
@@ -278,10 +316,8 @@ function renderPublicVotesPage(section, state, page) {
         for (const vote of votes) {
             const item = document.createElement("li");
             item.append(
-                createVoter(vote.publicProfileName),
-                createScore("Micro", vote.microScore, "micro"),
-                createScore("Meso", vote.mesoScore, "meso"),
-                createScore("Macro", vote.macroScore, "macro")
+                createVoter(vote.publicProfileName, vote.publicProfileUrl),
+                createVoteRatioBar(vote)
             );
             list.append(item);
         }
@@ -347,26 +383,28 @@ function createAxisBar(label, value, maximumRatio, axis) {
     const item = document.createElement("div");
     item.className = `axis-ratio axis-ratio-${axis}`;
 
-    const valueLabel = document.createElement("strong");
-    valueLabel.textContent = formatPercent(value);
+    const normalizedValue = Math.max(0, Math.min(1, Number(value) || 0));
+    const relativeWidth = maximumRatio > 0
+        ? normalizedValue / maximumRatio
+        : 0;
+    const axisLabel = createAxisTooltip(axis, label);
+    axisLabel.classList.add("axis-ratio-label");
 
     const track = document.createElement("span");
     track.className = "axis-ratio-track";
     const fill = document.createElement("span");
     fill.className = "axis-ratio-fill";
-    const scaledValue = maximumRatio > 0
-        ? (value ?? 0) / maximumRatio
-        : 0;
-    fill.style.height = `${Math.max(0, Math.min(1, scaledValue)) * 100}%`;
+    fill.style.width = `${relativeWidth * 100}%`;
     track.append(fill);
 
-    const axisLabel = createAxisTooltip(axis, label);
-    axisLabel.classList.add("axis-ratio-label");
-    item.append(valueLabel, track, axisLabel);
+    const valueLabel = document.createElement("strong");
+    valueLabel.textContent = formatPercent(normalizedValue);
+
+    item.append(axisLabel, track, valueLabel);
     return item;
 }
 
-function createVotingControl(game, ownedGame) {
+function createVotingControl(game, ownedGame, dataCollectionEnabled) {
     const control = document.createElement("div");
     control.className = "game-detail-voting";
 
@@ -380,6 +418,13 @@ function createVotingControl(game, ownedGame) {
 
     const button = document.createElement("button");
     button.type = "button";
+    if (!dataCollectionEnabled) {
+        button.disabled = true;
+        button.textContent = "Ownership data not available";
+        control.append(button);
+        return control;
+    }
+
     if (!ownedGame) {
         button.disabled = true;
         button.textContent = "Not in your Steam library";
@@ -406,18 +451,97 @@ function createVotingControl(game, ownedGame) {
     return control;
 }
 
-function createVoter(name) {
-    const voter = document.createElement("span");
+function createVoter(name, profileUrl) {
+    const safeProfileUrl = getSafeProfileUrl(profileUrl);
+    const voter = document.createElement(safeProfileUrl ? "a" : "span");
     voter.className = "raw-voter raw-voter-public";
     voter.textContent = name;
+    if (safeProfileUrl) {
+        voter.href = safeProfileUrl;
+        voter.target = "_blank";
+        voter.rel = "noopener noreferrer";
+    }
     return voter;
 }
 
-function createScore(label, value, axis) {
-    const score = document.createElement("span");
-    score.className = `raw-score raw-score-${axis}`;
-    score.textContent = `${label} ${Number(value).toFixed(1)}`;
-    return score;
+function getSafeProfileUrl(profileUrl) {
+    if (!profileUrl) {
+        return null;
+    }
+
+    try {
+        const url = new URL(profileUrl);
+        return url.protocol === "https:" || url.protocol === "http:"
+            ? url.href
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+function createVoteRatioBar(vote) {
+    const scores = [vote.microScore, vote.mesoScore, vote.macroScore]
+        .map((value) => Math.max(0, Number(value) || 0));
+    const total = scores.reduce((sum, value) => sum + value, 0);
+    const ratios = total > 0
+        ? scores.map((value) => value / total)
+        : scores.map(() => 1 / scores.length);
+    const visualWidths = applyMinimumSegmentWidth(ratios, 0.1);
+    const definitions = [
+        ["Micro", "micro"],
+        ["Meso", "meso"],
+        ["Macro", "macro"]
+    ];
+    const bar = document.createElement("div");
+    bar.className = "raw-vote-ratio";
+    bar.setAttribute("aria-label", definitions
+        .map(([label], index) => `${label} ${formatPercent(ratios[index])}`)
+        .join(", "));
+
+    definitions.forEach(([label, axis], index) => {
+        const segment = document.createElement("span");
+        segment.className = `raw-vote-ratio-segment raw-vote-ratio-${axis}`;
+        segment.style.width = `${visualWidths[index] * 100}%`;
+        segment.title = `${label} ${formatPercent(ratios[index])}`;
+        segment.textContent = formatPercent(ratios[index]);
+        bar.append(segment);
+    });
+
+    return bar;
+}
+
+function applyMinimumSegmentWidth(ratios, minimum) {
+    const widths = new Array(ratios.length).fill(0);
+    const remaining = new Set(ratios.map((_, index) => index));
+    let remainingWidth = 1;
+    let remainingRatio = ratios.reduce((sum, value) => sum + value, 0);
+
+    while (remaining.size > 0) {
+        const belowMinimum = [...remaining].filter((index) => {
+            const proportionalWidth = remainingRatio > 0
+                ? ratios[index] / remainingRatio * remainingWidth
+                : remainingWidth / remaining.size;
+            return proportionalWidth < minimum;
+        });
+
+        if (belowMinimum.length === 0) {
+            for (const index of remaining) {
+                widths[index] = remainingRatio > 0
+                    ? ratios[index] / remainingRatio * remainingWidth
+                    : remainingWidth / remaining.size;
+            }
+            break;
+        }
+
+        for (const index of belowMinimum) {
+            widths[index] = minimum;
+            remaining.delete(index);
+            remainingWidth -= minimum;
+            remainingRatio -= ratios[index];
+        }
+    }
+
+    return widths;
 }
 
 function formatPercent(value) {
