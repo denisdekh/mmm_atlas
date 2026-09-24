@@ -1545,6 +1545,22 @@ body.atlas-fullscreen-lock {
     font-size: 0.8rem;
 }
 
+.footer-feedback-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.footer-feedback-button:hover,
+.footer-feedback-button:focus-visible {
+    color: var(--text);
+}
+
 .message-page {
     min-height: calc(100vh - 11.25rem);
     display: flex;
@@ -2561,6 +2577,43 @@ body.atlas-fullscreen-lock {
 
 .vote-dialog form[data-vote-form] {
     padding: 0.5rem 1.5rem 1.5rem;
+}
+
+.feedback-dialog form {
+    padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.feedback-dialog label {
+    display: block;
+    margin-bottom: 0.6rem;
+    font-weight: 700;
+}
+
+.feedback-dialog textarea {
+    display: block;
+    width: 100%;
+    min-height: 10rem;
+    padding: 0.85rem;
+    border: 1px solid var(--line);
+    border-radius: 0.7rem;
+    background: var(--background);
+    color: var(--text);
+    font: inherit;
+    resize: vertical;
+}
+
+.feedback-dialog textarea:focus-visible {
+    outline: 2px solid var(--macro);
+    outline-offset: 2px;
+}
+
+.feedback-form-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    color: var(--muted);
+    font-size: 0.8rem;
 }
 
 .vote-dialog[data-steam-opt-out-dialog] > p {

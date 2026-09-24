@@ -1,7 +1,9 @@
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 using AspNet.Security.OpenId.Steam;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using MMMAtlas.Api;
 using MMMAtlas.Configuration;
 using MMMAtlas.Data;
@@ -21,6 +23,34 @@ var steamApiKey = builder.Configuration["Steam:ApiKey"]
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 builder.Services.AddAuthorization();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+    foreach (var address in builder.Configuration
+        .GetSection("Feedback:TrustedProxies").Get<string[]>() ?? [])
+    {
+        if (!System.Net.IPAddress.TryParse(address, out var proxy))
+        {
+            throw new InvalidOperationException(
+                $"Feedback:TrustedProxies contains an invalid IP address: {address}");
+        }
+
+        options.KnownProxies.Add(proxy);
+    }
+});
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("feedback", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new  FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0
+            }));
+});
 builder.Services.AddSingleton(buildPolicy);
 if (httpsRedirection.Enabled)
 {
@@ -219,6 +249,7 @@ if (!buildPolicy.DebugEnabled)
     app.UseHsts();
 }
 
+app.UseForwardedHeaders();
 app.UseWhen(
     context => !context.Request.Path.StartsWithSegments("/api"),
     branch => branch.UseStatusCodePagesWithReExecute(
@@ -231,6 +262,7 @@ if (httpsRedirection.Enabled)
 app.UseRouting();
 app.UseAuthentication();
 app.UseMiddleware<OperationalRequestLoggingMiddleware>();
+app.UseRateLimiter();
 app.UseAuthorization();
 
 var seedOnStartup = buildPolicy.UsesDevelopmentDatabase
@@ -271,6 +303,7 @@ app.MapGameEndpoints();
 app.MapAtlasEventEndpoints();
 app.MapSteamAccountEndpoints();
 app.MapVoteEndpoints();
+app.MapFeedbackEndpoints();
 app.MapProfilerEndpoints(buildPolicy, builder.Configuration);
 app.MapControllers();
 app.MapRazorPages()

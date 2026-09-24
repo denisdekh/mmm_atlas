@@ -2,6 +2,18 @@ PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS Feedback
+(
+    FeedbackId   INTEGER NOT NULL
+        CONSTRAINT PK_Feedback PRIMARY KEY AUTOINCREMENT,
+    Message      TEXT    NOT NULL,
+    SourceIp     TEXT    NULL,
+    CreatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT CK_Feedback_Message_Length
+        CHECK (length(trim(Message)) BETWEEN 1 AND 1000)
+);
+
 CREATE TABLE IF NOT EXISTS Users
 (
     UserId              INTEGER NOT NULL

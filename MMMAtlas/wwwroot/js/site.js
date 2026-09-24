@@ -3,6 +3,7 @@ import { initializeVoteDialog } from "./vote-dialog.js";
 import { initializeGameDetailDialog } from "./game-detail-dialog.js";
 import { initializeUserGamesCache } from "./user-games-cache.js";
 import { initializeAxisTooltips } from "./axis-tooltips.js";
+import { initializeFeedbackDialog } from "./feedback-dialog.js";
 
 document.documentElement.classList.add("js");
 
@@ -18,6 +19,7 @@ initializeUserGamesCache().catch(() => {
 });
 initializeGameDetailDialog();
 initializeVoteDialog();
+initializeFeedbackDialog();
 
 document.dispatchEvent(new CustomEvent("mmm-atlas:ready", {
     detail: { page: pageName }

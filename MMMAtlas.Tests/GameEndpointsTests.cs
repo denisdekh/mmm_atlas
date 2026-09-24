@@ -25,6 +25,75 @@ namespace MMMAtlas.Tests;
 public sealed class GameEndpointsTests
 {
     [TestMethod]
+    public async Task AnonymousFeedbackIsSavedAndRejectsInvalidLength()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var page = await client.GetStringAsync("/");
+        StringAssert.Contains(page, "data-feedback-open");
+        StringAssert.Contains(page, "maxlength=\"1000\"");
+
+        using var empty = await client.PostAsync(
+            "/api/feedback",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["message"] = "   "
+            }));
+        Assert.AreEqual(HttpStatusCode.BadRequest, empty.StatusCode);
+
+        using var tooLong = await client.PostAsync(
+            "/api/feedback",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["message"] = new string('x', 1001)
+            }));
+        Assert.AreEqual(HttpStatusCode.BadRequest, tooLong.StatusCode);
+
+        var message = new string('x', 1000);
+        using var accepted = await client.PostAsync(
+            "/api/feedback",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["message"] = message
+            }));
+        Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
+
+        var saved = await factory.ReadFeedbackAsync();
+        Assert.HasCount(1, saved);
+        Assert.AreEqual(1L, saved[0].Id);
+        Assert.AreEqual(message, saved[0].Message);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(saved[0].CreatedAtUtc));
+    }
+
+    [TestMethod]
+    public async Task AnonymousFeedbackIsLimitedAfterThreeRequests()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            using var accepted = await client.PostAsync(
+                "/api/feedback",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    ["message"] = $"Feedback {attempt}"
+                }));
+            Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
+        }
+
+        using var rejected = await client.PostAsync(
+            "/api/feedback",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["message"] = "Feedback 4"
+            }));
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+        Assert.HasCount(3, await factory.ReadFeedbackAsync());
+    }
+
+    [TestMethod]
     public async Task ProductionRuntimeServesStaticAssetsFromBuildOutput()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -835,6 +904,31 @@ public sealed class GameEndpointsTests
         private readonly string _databasePath =
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.db");
 
+        public async Task<List<(long Id, string Message, string? SourceIp, string CreatedAtUtc)>>
+            ReadFeedbackAsync()
+        {
+            var records = new List<(long, string, string?, string)>();
+            await using var connection = new SqliteConnection(
+                $"Data Source={_databasePath}");
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT FeedbackId, Message, SourceIp, CreatedAtUtc
+                FROM Feedback ORDER BY FeedbackId;
+                """;
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                records.Add((
+                    reader.GetInt64(0),
+                    reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2),
+                    reader.GetString(3)));
+            }
+
+            return records;
+        }
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             InitializeDatabase();
@@ -884,6 +978,14 @@ public sealed class GameEndpointsTests
 
             using var command = connection.CreateCommand();
             command.CommandText = """
+                CREATE TABLE Feedback
+                (
+                    FeedbackId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Message TEXT NOT NULL CHECK (length(trim(Message)) BETWEEN 1 AND 1000),
+                    SourceIp TEXT NULL,
+                    CreatedAtUtc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+
                 CREATE TABLE DevelopmentGameInfo
                 (
                     GameId INTEGER PRIMARY KEY,

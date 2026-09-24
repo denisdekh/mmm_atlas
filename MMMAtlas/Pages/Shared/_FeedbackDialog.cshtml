@@ -1,0 +1,23 @@
+<dialog class="vote-dialog feedback-dialog" data-feedback-dialog aria-labelledby="feedback-dialog-title">
+    <div class="vote-dialog-header">
+        <h2 id="feedback-dialog-title">Send feedback</h2>
+        <button class="dialog-close-button" type="button" data-feedback-close aria-label="Close feedback dialog">Close</button>
+    </div>
+
+    <form data-feedback-form>
+        @Html.AntiForgeryToken()
+        <label for="feedback-message">Your feedback</label>
+        <textarea id="feedback-message" name="message" maxlength="1000" required rows="7" data-feedback-message></textarea>
+        <div class="feedback-form-meta">
+            <span>No sign-in required.</span>
+            <output data-feedback-count for="feedback-message">0 / 1000</output>
+        </div>
+        <p class="vote-error" data-feedback-error role="alert" hidden></p>
+        <div class="vote-dialog-actions">
+            <button class="ui-button" type="button" data-feedback-cancel>Cancel</button>
+            <button class="ui-button ui-button-primary" type="submit" data-feedback-submit>Send feedback</button>
+        </div>
+    </form>
+</dialog>
+
+<div class="vote-toast-region" data-feedback-toast-region role="status" aria-live="polite" aria-atomic="true"></div>

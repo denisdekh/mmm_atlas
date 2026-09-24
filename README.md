@@ -73,6 +73,13 @@ test-only features; do not use the runtime environment as a feature flag.
 Every mode applies the idempotent database schema at startup. Only Development
 and Test builds may load the optional development seed data.
 
+The footer feedback form accepts anonymous submissions of up to 1,000
+characters. It stores the message, source IP address, and UTC creation time in
+the `Feedback` table. The endpoint allows three submissions per source IP every
+ten minutes. If the app is behind a reverse proxy, add each trusted proxy IP to
+`Feedback:TrustedProxies` (for example,
+`Feedback__TrustedProxies__0=10.0.0.5`) so the forwarded client IP is used.
+
 Build a production artifact with:
 
 ```powershell
