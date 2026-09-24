@@ -2819,11 +2819,21 @@ body.atlas-fullscreen-lock {
     }
 }
 
-@media (max-width: 800px) {
-    .site-nav {
-        display: none;
+@media (max-width: 960px) {
+    .site-header {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        padding-block: 1rem;
     }
 
+    .site-nav {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 0.75rem 1.25rem;
+    }
+}
+
+@media (max-width: 800px) {
     .hero {
         grid-template-columns: 1fr;
         min-height: auto;
