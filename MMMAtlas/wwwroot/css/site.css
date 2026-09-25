@@ -1534,6 +1534,22 @@ body.atlas-fullscreen-lock {
     font-weight: 800;
 }
 
+.steps-action {
+    display: inline-block;
+    justify-self: start;
+    color: var(--text);
+    text-decoration: underline;
+    text-decoration-color: var(--muted);
+    text-underline-offset: 0.18em;
+    transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+
+.steps-action:hover,
+.steps-action:focus-visible {
+    color: var(--macro);
+    text-decoration-color: currentColor;
+}
+
 .site-footer {
     min-height: 6rem;
     display: flex;
@@ -2953,6 +2969,11 @@ body.atlas-fullscreen-lock {
 }
 
 @media (max-width: 520px) {
+    .steps li {
+        grid-template-columns: 2rem minmax(0, 1fr);
+        gap: 0.5rem;
+    }
+
     .atlas-test-controls {
         grid-template-columns: 1fr 1fr;
     }
