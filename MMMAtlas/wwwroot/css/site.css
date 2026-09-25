@@ -2461,12 +2461,14 @@ body.atlas-fullscreen-lock {
 }
 
 .game-detail-public-votes li {
-    grid-template-columns: minmax(7.5rem, 0.75fr) minmax(0, 2fr);
+    display: flex;
     align-items: stretch;
+    width: 100%;
 }
 
 .game-detail-public-votes .raw-voter-details {
     display: flex;
+    flex: 0 0 28%;
     align-items: center;
     gap: 0.5rem;
     min-width: 0;
@@ -2501,6 +2503,8 @@ body.atlas-fullscreen-lock {
 
 .raw-vote-ratio {
     display: flex;
+    flex: 1 1 0;
+    width: 0;
     min-width: 0;
     min-height: 2.1rem;
     overflow: hidden;
@@ -3137,6 +3141,19 @@ body.atlas-fullscreen-lock {
     .aggregate-grid,
     .raw-votes li {
         grid-template-columns: 1fr;
+    }
+
+    .game-detail-public-votes li {
+        flex-direction: column;
+    }
+
+    .game-detail-public-votes .raw-voter-details {
+        flex-basis: auto;
+    }
+
+    .game-detail-public-votes .raw-vote-ratio {
+        flex: none;
+        width: 100%;
     }
 }
 
