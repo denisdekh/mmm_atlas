@@ -2465,12 +2465,31 @@ body.atlas-fullscreen-lock {
     align-items: stretch;
 }
 
-.game-detail-public-votes .raw-voter {
+.game-detail-public-votes .raw-voter-details {
     display: flex;
     align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
+    border-radius: 0.5rem;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.game-detail-public-votes .raw-voter {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    background: none;
+}
+
+.raw-voter-playtime {
+    flex: none;
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 400;
     white-space: nowrap;
 }
 

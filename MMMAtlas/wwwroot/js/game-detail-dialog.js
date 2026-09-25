@@ -315,8 +315,18 @@ function renderPublicVotesPage(section, state, page) {
         list.className = "raw-votes game-detail-public-votes";
         for (const vote of votes) {
             const item = document.createElement("li");
+            const voterDetails = document.createElement("div");
+            voterDetails.className = "raw-voter-details";
+            voterDetails.append(createVoter(vote.publicProfileName, vote.publicProfileUrl));
+            if (Number.isFinite(vote.playtimeForeverMinutes)
+                && vote.playtimeForeverMinutes >= 0) {
+                const playtime = document.createElement("small");
+                playtime.className = "raw-voter-playtime";
+                playtime.textContent = `${(vote.playtimeForeverMinutes / 60).toFixed(1)}h`;
+                voterDetails.append(playtime);
+            }
             item.append(
-                createVoter(vote.publicProfileName, vote.publicProfileUrl),
+                voterDetails,
                 createVoteRatioBar(vote)
             );
             list.append(item);

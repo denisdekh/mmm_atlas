@@ -665,6 +665,7 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(2.2, votes[0].MesoScore);
         Assert.AreEqual(3.3, votes[0].MacroScore);
         Assert.AreEqual("Atlas Tester", votes[0].PublicProfileName);
+        Assert.AreEqual(120, votes[0].PlaytimeForeverMinutes);
     }
 
     [TestMethod]
@@ -798,7 +799,8 @@ public sealed class GameEndpointsTests
         double MesoScore,
         double MacroScore,
         string? PublicProfileName,
-        string? PublicProfileUrl = null);
+        string? PublicProfileUrl = null,
+        int? PlaytimeForeverMinutes = null);
 
     private sealed record VoteSubmissionResponse(
         decimal MicroScore,

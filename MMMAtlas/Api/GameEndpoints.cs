@@ -503,10 +503,20 @@ public static class GameEndpoints
                         AND account.PersonaName IS NOT NULL
                     THEN account.ProfileUrl
                     ELSE NULL
-                END AS PublicProfileUrl
+                END AS PublicProfileUrl,
+                CASE
+                    WHEN vote.IsPublic = 1
+                        AND account.DataCollectionEnabled = 1
+                        AND account.PersonaName IS NOT NULL
+                    THEN library.PlaytimeForeverMinutes
+                    ELSE NULL
+                END AS PlaytimeForeverMinutes
             FROM Votes AS vote
             LEFT JOIN SteamAccounts AS account
                 ON account.UserId = vote.UserId
+            LEFT JOIN SteamLibraryGames AS library
+                ON library.UserId = vote.UserId
+                AND library.GameId = vote.GameId
             WHERE vote.GameId = $gameId
                 AND
                 (
@@ -591,7 +601,9 @@ public static class GameEndpoints
                 PublicProfileName:
                     reader.IsDBNull(3) ? null : reader.GetString(3),
                 PublicProfileUrl:
-                    reader.IsDBNull(4) ? null : reader.GetString(4)));
+                    reader.IsDBNull(4) ? null : reader.GetString(4),
+                PlaytimeForeverMinutes:
+                    reader.IsDBNull(5) ? null : reader.GetInt32(5)));
         }
 
         return Results.Ok(results);
@@ -677,5 +689,6 @@ public static class GameEndpoints
         double MesoScore,
         double MacroScore,
         string? PublicProfileName,
-        string? PublicProfileUrl);
+        string? PublicProfileUrl,
+        int? PlaytimeForeverMinutes);
 }
