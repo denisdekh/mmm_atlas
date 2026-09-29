@@ -132,6 +132,32 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
+    public async Task SteamChallengeUsesPublicHttpsSchemeBehindTrustedProxy()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient(
+            new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/login")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = "test-request-token"
+            })
+        };
+        request.Headers.Host = "atlas.example.test";
+        request.Headers.Add("X-Forwarded-For", "203.0.113.10");
+        request.Headers.Add("X-Forwarded-Proto", "https");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.IsNotNull(response.Headers.Location);
+        StringAssert.Contains(
+            Uri.UnescapeDataString(response.Headers.Location.ToString()),
+            "https://atlas.example.test/signin-steam");
+    }
+
+    [TestMethod]
     public async Task DashboardUsesAnOptInButtonWhenCollectionIsDisabled()
     {
         await using var factory = new AtlasApplicationFactory();

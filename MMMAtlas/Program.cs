@@ -25,7 +25,8 @@ builder.Services.AddControllers();
 builder.Services.AddAuthorization();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     foreach (var address in builder.Configuration
         .GetSection("Feedback:TrustedProxies").Get<string[]>() ?? [])
     {

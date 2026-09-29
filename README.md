@@ -78,7 +78,11 @@ characters. It stores the message, source IP address, and UTC creation time in
 the `Feedback` table. The endpoint allows three submissions per source IP every
 ten minutes. If the app is behind a reverse proxy, add each trusted proxy IP to
 `Feedback:TrustedProxies` (for example,
-`Feedback__TrustedProxies__0=10.0.0.5`) so the forwarded client IP is used.
+`Feedback__TrustedProxies__0=10.0.0.5`) so the forwarded client IP and
+original HTTPS scheme are used. The reverse proxy must send
+`X-Forwarded-For` and `X-Forwarded-Proto`; the latter keeps Steam's sign-in
+callback URL on HTTPS. Only configured proxy IPs (and the default local proxies)
+are trusted for these headers.
 
 Build a production artifact with:
 
