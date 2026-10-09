@@ -1979,11 +1979,34 @@ body.atlas-fullscreen-lock {
 
 .dashboard-status {
     flex: none;
-    padding: 0.4rem 0.65rem;
+    padding: 0.7rem 1rem;
     border: 1px solid var(--line);
     border-radius: 999px;
     color: var(--muted);
-    font-size: 0.7rem;
+    font-size: 1.2rem;
+}
+
+.dashboard-status-private {
+    border-color: var(--micro);
+    background: rgba(251, 96, 105, 0.1);
+    color: var(--micro);
+    cursor: help;
+}
+
+.dashboard-games-card-private {
+    overflow: visible;
+}
+
+.dashboard-library-status-tooltip {
+    --axis-tooltip-x: 0;
+    flex: none;
+}
+
+.dashboard-library-status-tooltip .axis-tooltip-bubble {
+    top: calc(100% + 0.6rem);
+    right: 0;
+    bottom: auto;
+    left: auto;
 }
 
 .dashboard-card form.dashboard-library-search {

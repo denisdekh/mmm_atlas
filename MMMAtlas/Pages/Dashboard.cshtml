@@ -112,13 +112,38 @@
             }
         </section>
 
-        <section class="dashboard-card dashboard-games-card">
+        <section class="dashboard-card dashboard-games-card @(Model.Dashboard.LibraryCheckStatus == "Private" ? "dashboard-games-card-private" : null)">
             <div class="dashboard-card-heading">
                 <div>
                     <p class="dashboard-card-index">04 / Library</p>
                     <h2>Most played games</h2>
                 </div>
-                <span class="dashboard-status">@Model.Dashboard.LibraryCheckStatus</span>
+                @if (Model.Dashboard.LibraryCheckStatus == "Private")
+                {
+                    <span class="axis-tooltip dashboard-library-status-tooltip">
+                        <button
+                            type="button"
+                            class="dashboard-status dashboard-status-private"
+                            data-axis-tooltip="library-private"
+                            aria-describedby="dashboard-library-private-tooltip">Private</button>
+                        <span
+                            class="axis-tooltip-bubble"
+                            id="dashboard-library-private-tooltip"
+                            role="tooltip">
+                            <strong>A public Steam library is required to cast a vote.</strong>
+                            Open Steam, select your name, and go to your profile.
+                            Choose Edit Profile → Privacy Settings, then set both
+                            My profile and Game details to Public.
+                            Sign in to MMM Atlas again to load your game library and playtime.
+                            Once your data has been collected, you can make your
+                            Steam profile and game details private again and continue voting.
+                        </span>
+                    </span>
+                }
+                else
+                {
+                    <span class="dashboard-status">@Model.Dashboard.LibraryCheckStatus</span>
+                }
             </div>
 
             @if (Model.Dashboard.DataCollectionEnabled)
