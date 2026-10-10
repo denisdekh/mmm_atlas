@@ -2121,6 +2121,21 @@ body.atlas-fullscreen-lock {
     object-fit: cover;
 }
 
+.dashboard-game-artwork.is-loading {
+    animation: dashboard-artwork-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes dashboard-artwork-pulse {
+    0%, 100% { opacity: 0.4; background-color: var(--background); }
+    50% { opacity: 1; background-color: var(--surface-raised); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-game-artwork.is-loading {
+        animation: none;
+    }
+}
+
 .dashboard-game:last-child {
     border-bottom: 0;
 }

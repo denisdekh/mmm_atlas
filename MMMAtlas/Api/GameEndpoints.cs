@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using MMMAtlas.Data;
+using MMMAtlas.Steam;
 
 namespace MMMAtlas.Api;
 
@@ -20,9 +21,27 @@ public static class GameEndpoints
             .WithName("GetAtlasIcon");
         games.MapGet("/{gameId:long}/library-card", GetLibraryCardAsync)
             .WithName("GetLibraryCard");
+        games.MapGet("/{gameId:long}/library-card-url", GetLibraryCardUrlAsync);
         games.MapGet("/{gameId:long}/votes", GetGameVotesAsync);
 
         return endpoints;
+    }
+
+    private static async Task<IResult> GetLibraryCardUrlAsync(
+        long gameId,
+        HttpContext httpContext,
+        SteamArtworkService artworkService,
+        CancellationToken cancellationToken)
+    {
+        var artwork = await artworkService.GetAsync(gameId, cancellationToken);
+        if (artwork is null) return Results.NotFound();
+        httpContext.Response.Headers.CacheControl = "no-store";
+        return Results.Ok(new
+        {
+            url = artwork.Url,
+            hash = artwork.Hash,
+            needsAtlasIconUpdate = artwork.AtlasIconNeedsUpdate
+        });
     }
 
     private static async Task<IResult> GetGamesAsync(
@@ -71,7 +90,9 @@ public static class GameEndpoints
                 aggregate.VoteCount,
                 aggregate.MicroRatio,
                 aggregate.MesoRatio,
-                aggregate.MacroRatio
+                aggregate.MacroRatio,
+                steam.LibraryCardUrl,
+                steam.AtlasIconNeedsUpdate
             FROM SteamGames AS steam
             INNER JOIN GameVoteAggregates AS aggregate
                 ON aggregate.GameId = steam.GameId
@@ -233,7 +254,9 @@ public static class GameEndpoints
                 aggregate.VoteCount,
                 aggregate.MicroRatio,
                 aggregate.MesoRatio,
-                aggregate.MacroRatio
+                aggregate.MacroRatio,
+                steam.LibraryCardUrl,
+                steam.AtlasIconNeedsUpdate
             FROM SteamGames AS steam
             INNER JOIN GameVoteAggregates AS aggregate
                 ON aggregate.GameId = steam.GameId
@@ -355,110 +378,16 @@ public static class GameEndpoints
     private static async Task<IResult> GetLibraryCardAsync(
         long gameId,
         HttpContext httpContext,
-        DatabaseConnection database,
-        IHttpClientFactory httpClientFactory,
-        ILoggerFactory loggerFactory,
+        SteamArtworkService artworkService,
         CancellationToken cancellationToken)
     {
-        await using var connection = new SqliteConnection(database.Value);
-        await connection.OpenAsync(cancellationToken);
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT
-                steam.SteamAppId,
-                atlas.LibraryCardContentType,
-                atlas.LibraryCardContent
-            FROM SteamGames AS steam
-            LEFT JOIN GameAtlasIcons AS atlas
-                ON atlas.GameId = steam.GameId
-            WHERE steam.GameId = $gameId;
-            """;
-        command.Parameters.AddWithValue("$gameId", gameId);
-
-        int appId;
-        await using (var reader =
-            await command.ExecuteReaderAsync(cancellationToken))
-        {
-            if (!await reader.ReadAsync(cancellationToken))
-            {
-                return Results.NotFound();
-            }
-
-            appId = reader.GetInt32(0);
-            if (!reader.IsDBNull(2))
-            {
-                httpContext.Response.Headers.CacheControl =
-                    "public, max-age=86400";
-                return Results.File(
-                    (byte[])reader.GetValue(2),
-                    reader.IsDBNull(1)
-                        ? "image/jpeg"
-                        : reader.GetString(1));
-            }
-        }
-
-        var client = httpClientFactory.CreateClient("SteamLibraryImages");
-        var logger = loggerFactory.CreateLogger(
-            "MMMAtlas.Steam.SteamLibraryImages");
-        using var response = await client.GetAsync(
-            $"steam/apps/{appId}/library_600x900.jpg",
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            logger.LogWarning(
-                "Steam library card request failed for GameId {GameId}, "
-                + "SteamAppId {SteamAppId}, with status {StatusCode}. "
-                + "TraceId {TraceId}.",
-                gameId,
-                appId,
-                (int)response.StatusCode,
-                httpContext.TraceIdentifier);
-            return Results.Problem(
-                statusCode: StatusCodes.Status502BadGateway,
-                title: "Steam library card unavailable");
-        }
-
-        const int maximumLibraryCardBytes = 5 * 1024 * 1024;
-        if (response.Content.Headers.ContentLength
-            is > maximumLibraryCardBytes)
-        {
-            logger.LogWarning(
-                "Steam library card for GameId {GameId}, SteamAppId "
-                + "{SteamAppId}, declared {ContentLength} bytes and was rejected. "
-                + "TraceId {TraceId}.",
-                gameId,
-                appId,
-                response.Content.Headers.ContentLength,
-                httpContext.TraceIdentifier);
-            return Results.Problem(
-                statusCode: StatusCodes.Status502BadGateway,
-                title: "Steam library card is too large");
-        }
-
-        var content = await response.Content.ReadAsByteArrayAsync(
-            cancellationToken);
-        if (content.Length > maximumLibraryCardBytes)
-        {
-            logger.LogWarning(
-                "Steam library card for GameId {GameId}, SteamAppId "
-                + "{SteamAppId}, contained {ContentLength} bytes and was rejected. "
-                + "TraceId {TraceId}.",
-                gameId,
-                appId,
-                content.Length,
-                httpContext.TraceIdentifier);
-            return Results.Problem(
-                statusCode: StatusCodes.Status502BadGateway,
-                title: "Steam library card is too large");
-        }
-
-        httpContext.Response.Headers.CacheControl =
-            "public, max-age=86400";
-        return Results.File(
-            content,
-            response.Content.Headers.ContentType?.MediaType ?? "image/jpeg");
+        var artwork = await artworkService.GetAsync(gameId, cancellationToken);
+        if (artwork is null) return Results.NotFound();
+        if (artwork.Content is null) return Results.NotFound();
+        httpContext.Response.Headers.CacheControl = "public, max-age=86400";
+        return Results.File(artwork.Content, artwork.ContentType,
+            entityTag: artwork.Hash is null ? null
+                : new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{artwork.Hash}\""));
     }
 
     private static async Task<IResult> GetGameVotesAsync(
@@ -636,7 +565,9 @@ public static class GameEndpoints
             VoteCount: reader.GetInt32(11),
             MicroRatio: reader.GetDouble(12),
             MesoRatio: reader.GetDouble(13),
-            MacroRatio: reader.GetDouble(14));
+            MacroRatio: reader.GetDouble(14),
+            LibraryCardUrl: reader.IsDBNull(15) ? null : reader.GetString(15),
+            NeedsAtlasIcon: reader.GetBoolean(16));
     }
 
     private static IReadOnlyList<string> ReadNames(
@@ -668,7 +599,9 @@ public static class GameEndpoints
         int VoteCount,
         double? MicroRatio,
         double? MesoRatio,
-        double? MacroRatio);
+        double? MacroRatio,
+        string? LibraryCardUrl,
+        bool NeedsAtlasIcon);
 
     private sealed record AtlasGameDto(
         long GameId,

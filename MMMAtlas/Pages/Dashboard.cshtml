@@ -187,14 +187,15 @@
                                 var hasVote = game.MicroScore is not null;
                                 <li class="dashboard-game">
                                     <img
-                                        class="dashboard-game-artwork"
-                                        src="https://cdn.cloudflare.steamstatic.com/steam/apps/@game.SteamAppId/library_600x900.jpg"
+                                        class="dashboard-game-artwork is-loading"
+                                        data-game-id="@game.GameId"
+                                        src="@(game.LibraryCardUrl ?? $"/api/games/{game.GameId}/library-card")"
                                         alt=""
                                         width="48"
                                         height="72"
                                         loading="lazy" />
                                     <span class="dashboard-game-copy">
-                                        @if (!game.NeedsAtlasIcon)
+                                        @if (game.HasAtlasIcon || !game.NeedsAtlasIcon)
                                         {
                                             <button
                                                 type="button"
@@ -217,7 +218,7 @@
                                         data-steam-app-id="@game.SteamAppId"
                                         data-game-title="@game.Name"
                                         data-game-icon="@(game.HasAtlasIcon ? $"/api/games/{game.GameId}/atlas-icon" : null)"
-                                        data-library-card-url="/api/games/@game.GameId/library-card"
+                                        data-library-card-url="@game.LibraryCardUrl"
                                         data-needs-atlas-icon="@game.NeedsAtlasIcon.ToString().ToLowerInvariant()"
                                         data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
                                         data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"

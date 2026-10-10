@@ -38,6 +38,11 @@ public sealed class DatabaseInitializerTests
             Assert.AreEqual(
                 0L,
                 await ScalarAsync(connection, "SELECT COUNT(*) FROM Users;"));
+            Assert.AreEqual(6L, await ScalarAsync(connection, """
+                SELECT COUNT(*) FROM pragma_table_info('SteamGames') WHERE name IN
+                    ('LibraryCardUrl', 'LibraryCardContent', 'LibraryCardContentType',
+                     'LibraryCardHash', 'LibraryCardHashCheckedAtUtc', 'AtlasIconNeedsUpdate');
+                """));
         }
         finally
         {
@@ -51,6 +56,53 @@ public sealed class DatabaseInitializerTests
             {
                 File.Delete(path);
             }
+        }
+    }
+
+    [TestMethod]
+    public async Task MigratesExistingArtworkSchemaWithoutDiscardingLegacyCards()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"atlas-artwork-migration-{Guid.NewGuid():N}.db");
+        var database = DatabaseConnection.Create($"Data Source={path}", Directory.GetCurrentDirectory());
+        try
+        {
+            await DatabaseInitializer.InitializeAsync(database, false);
+            await using (var connection = new SqliteConnection(database.Value))
+            {
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO Games(GameId) VALUES(1);
+                    INSERT INTO SteamGames(GameId, SteamAppId) VALUES(1,1234);
+                    INSERT INTO GameAtlasIcons(GameId, ImageContent, DiameterPixels,
+                        LibraryCardContentType, LibraryCardContent, LibraryCardWidthPixels, LibraryCardHeightPixels)
+                    VALUES(1, X'01', 96, 'image/jpeg', X'0203', 300, 450);
+                    ALTER TABLE SteamGames DROP COLUMN LibraryCardUrl;
+                    ALTER TABLE SteamGames DROP COLUMN LibraryCardContent;
+                    ALTER TABLE SteamGames DROP COLUMN LibraryCardContentType;
+                    ALTER TABLE SteamGames DROP COLUMN LibraryCardHash;
+                    ALTER TABLE SteamGames DROP COLUMN LibraryCardHashCheckedAtUtc;
+                    ALTER TABLE SteamGames DROP COLUMN AtlasIconNeedsUpdate;
+                    """;
+                await command.ExecuteNonQueryAsync();
+            }
+            await DatabaseInitializer.InitializeAsync(database, false);
+            await DatabaseInitializer.InitializeAsync(database, false);
+            await using var verify = new SqliteConnection(database.Value);
+            await verify.OpenAsync();
+            Assert.AreEqual(1L, await ScalarAsync(verify, """
+                SELECT COUNT(*) FROM SteamGames WHERE GameId=1 AND AtlasIconNeedsUpdate=0
+                    AND LibraryCardHash IS NULL AND LibraryCardHashCheckedAtUtc IS NULL;
+                """));
+            Assert.AreEqual(1L, await ScalarAsync(verify,
+                "SELECT COUNT(*) FROM GameAtlasIcons WHERE LibraryCardContent=X'0203' AND ImageContent=X'01';"));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(path);
+            File.Delete(path + "-wal");
+            File.Delete(path + "-shm");
         }
     }
 

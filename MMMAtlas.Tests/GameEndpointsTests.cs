@@ -25,6 +25,65 @@ namespace MMMAtlas.Tests;
 public sealed class GameEndpointsTests
 {
     [TestMethod]
+    public async Task LibraryCardLookupUsesStoredMetadataAndRawBackupWithoutFurtherSteamCalls()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        var card = await client.GetFromJsonAsync<JsonElement>("/api/games/1/library-card-url");
+        Assert.AreEqual(
+            "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/1234/hash/library_capsule.jpg?t=123",
+            card.GetProperty("url").GetString());
+        Assert.AreEqual(1, factory.ArtworkHttp.MetadataRequests);
+        Assert.AreEqual(1, factory.ArtworkHttp.ImageRequests);
+        factory.ArtworkHttp.ImageStatus = HttpStatusCode.NotFound;
+        using var raw = await client.GetAsync("/api/games/1/library-card");
+        CollectionAssert.AreEqual(factory.ArtworkHttp.ImageContent, await raw.Content.ReadAsByteArrayAsync());
+        Assert.AreEqual("image/jpeg", raw.Content.Headers.ContentType?.MediaType);
+        Assert.IsNotNull(raw.Headers.ETag);
+        Assert.IsTrue(raw.Headers.CacheControl?.Public);
+        Assert.AreEqual(TimeSpan.FromDays(1), raw.Headers.CacheControl?.MaxAge);
+        await client.GetAsync("/api/games/1/library-card-url");
+        Assert.AreEqual(1, factory.ArtworkHttp.MetadataRequests);
+        Assert.AreEqual(1, factory.ArtworkHttp.ImageRequests);
+        using var unknown = await client.GetAsync("/api/games/999999/library-card-url");
+        Assert.AreEqual(HttpStatusCode.NotFound, unknown.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task VoteDetectsChangedArtworkAndTheNextVoteRequiresANewCrop()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        var service = factory.Services.GetRequiredService<SteamArtworkService>();
+        await service.ImportMissingAsync([1234], CancellationToken.None);
+        await using (var connection = new SqliteConnection(factory.Services.GetRequiredService<DatabaseConnection>().Value))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE SteamGames SET LibraryCardHashCheckedAtUtc = datetime('now', '-8 days') WHERE GameId=1;";
+            await command.ExecuteNonQueryAsync();
+        }
+        factory.ArtworkHttp.ImageContent = [.. factory.ArtworkHttp.ImageContent, 42];
+        using var submitted = await client.PostAsync("/api/me/votes/1",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["microScore"] = "5", ["mesoScore"] = "5", ["macroScore"] = "5"
+            }));
+        Assert.AreEqual(HttpStatusCode.OK, submitted.StatusCode);
+        Assert.IsTrue((await submitted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("needsAtlasIcon").GetBoolean());
+        using var next = await client.PostAsync("/api/me/votes/1",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["microScore"] = "5", ["mesoScore"] = "5", ["macroScore"] = "5"
+            }));
+        Assert.AreEqual(HttpStatusCode.BadRequest, next.StatusCode);
+        using var replacement = await client.PostAsync("/api/me/votes/1", CreateFirstVoteContent(factory.ArtworkHttp.ImageContent));
+        Assert.AreEqual(HttpStatusCode.OK, replacement.StatusCode);
+        Assert.IsFalse((await replacement.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("needsAtlasIcon").GetBoolean());
+    }
+
+    [TestMethod]
     public async Task AnonymousFeedbackIsSavedAndRejectsInvalidLength()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -775,6 +834,8 @@ public sealed class GameEndpointsTests
 
         var iconResponse = await client.GetAsync("/api/games/2/atlas-icon");
         Assert.AreEqual(HttpStatusCode.OK, iconResponse.StatusCode);
+        Assert.IsTrue(iconResponse.Headers.CacheControl?.Public);
+        Assert.AreEqual(TimeSpan.FromDays(1), iconResponse.Headers.CacheControl?.MaxAge);
         Assert.AreEqual(
             "image/png",
             iconResponse.Content.Headers.ContentType?.MediaType);
@@ -888,7 +949,7 @@ public sealed class GameEndpointsTests
         double MesoRatio,
         double MacroRatio);
 
-    private static MultipartFormDataContent CreateFirstVoteContent()
+    private static MultipartFormDataContent CreateFirstVoteContent(byte[]? cardContent = null)
     {
         var content = new MultipartFormDataContent
         {
@@ -903,7 +964,7 @@ public sealed class GameEndpointsTests
         var png = new ByteArrayContent(pngContent);
         png.Headers.ContentType = new("image/png");
         content.Add(png, "atlasIcon", "atlas-icon.png");
-        var jpeg = new ByteArrayContent(
+        var jpeg = new ByteArrayContent(cardContent ??
         [
             0xff, 0xd8,
             0xff, 0xc0, 0x00, 0x11, 0x08,
@@ -929,6 +990,7 @@ public sealed class GameEndpointsTests
     private sealed class AtlasApplicationFactory :
         WebApplicationFactory<Program>
     {
+        public ArtworkTestHttpClientFactory ArtworkHttp { get; } = new();
         private readonly string _databasePath =
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.db");
 
@@ -971,6 +1033,10 @@ public sealed class GameEndpointsTests
                     Directory.GetCurrentDirectory()));
                 services.RemoveAll<IAntiforgery>();
                 services.AddSingleton<IAntiforgery, TestAntiforgery>();
+                services.AddHttpClient("SteamStoreBrowse")
+                    .ConfigurePrimaryHttpMessageHandler(() => ArtworkHttp.CreateHandler("SteamStoreBrowse"));
+                services.AddHttpClient("SteamLibraryImages")
+                    .ConfigurePrimaryHttpMessageHandler(() => ArtworkHttp.CreateHandler("SteamLibraryImages"));
                 services
                     .AddAuthentication(options =>
                     {
@@ -1065,7 +1131,13 @@ public sealed class GameEndpointsTests
                     Description TEXT NULL,
                     ReleaseYear INTEGER NULL,
                     IsFree INTEGER NULL,
-                    StoreMetadataFetchedAtUtc TEXT NULL
+                    StoreMetadataFetchedAtUtc TEXT NULL,
+                    LibraryCardUrl TEXT NULL,
+                    LibraryCardContent BLOB NULL,
+                    LibraryCardContentType TEXT NULL,
+                    LibraryCardHash TEXT NULL,
+                    LibraryCardHashCheckedAtUtc TEXT NULL,
+                    AtlasIconNeedsUpdate INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE TABLE SteamGameDevelopers

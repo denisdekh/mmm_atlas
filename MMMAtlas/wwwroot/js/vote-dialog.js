@@ -1,6 +1,8 @@
 import { updateCachedVote } from "./user-games-cache.js";
+import { initializeDashboardGameImage, fetchLibraryCardBlob } from "./dashboard-game-images.js";
 
 const scoreNames = ["microScore", "mesoScore", "macroScore"];
+
 const cropCanvasSize = 300;
 const cropPreviewDiameter = 280;
 const savedIconDiameter = 96;
@@ -39,10 +41,6 @@ export function initializeVoteDialog() {
     let drag = null;
     let cropLoadId = 0;
 
-    libraryCard.addEventListener("error", () => {
-        libraryCard.hidden = true;
-    });
-
     const setScore = (name, value) => {
         const input = form.elements.namedItem(name);
         const output = form.querySelector(`[data-score-output="${name}"]`);
@@ -65,12 +63,23 @@ export function initializeVoteDialog() {
             setScore(name, hasVote ? trigger.dataset[name] : 5);
         }
 
-        libraryCard.src =
-            `https://cdn.cloudflare.steamstatic.com/steam/apps/${encodeURIComponent(trigger.dataset.steamAppId)}/library_600x900.jpg`;
+        initializeDashboardGameImage(libraryCard, gameId, trigger.dataset.libraryCardUrl);
         libraryCard.alt = "";
         libraryCard.hidden = false;
 
         dialog.showModal();
+
+        // Other votes/imports may have replaced the artwork since this page loaded.
+        const openedGameId = gameId;
+        fetch(`/api/games/${encodeURIComponent(gameId)}/library-card-url`, {
+            signal: AbortSignal.timeout(5000), cache: "no-store"
+        }).then((response) => response.ok ? response.json() : null).then((artwork) => {
+            if (!artwork || gameId !== openedGameId || !dialog.open) return;
+            trigger.dataset.libraryCardUrl = artwork.url || "";
+            trigger.dataset.libraryCardHash = artwork.hash || "";
+            if (artwork.needsAtlasIconUpdate) trigger.dataset.needsAtlasIcon = "true";
+            initializeDashboardGameImage(libraryCard, gameId, artwork.url);
+        }).catch(() => { /* Existing metadata and the stored backup still work. */ });
     };
 
     const showToast = (message) => {
@@ -95,7 +104,7 @@ export function initializeVoteDialog() {
             }
 
             trigger.dataset.isPublic = String(vote.isPublic);
-            trigger.dataset.needsAtlasIcon = "false";
+            trigger.dataset.needsAtlasIcon = String(vote.needsAtlasIcon ?? false);
             if (hasAtlasIcon) {
                 trigger.dataset.gameIcon =
                     `/api/games/${encodeURIComponent(gameId)}/atlas-icon`;
@@ -119,6 +128,14 @@ export function initializeVoteDialog() {
 
             if (!response.ok) {
                 const problem = await response.json().catch(() => null);
+                if (problem?.needsAtlasIcon) {
+                    currentTrigger.dataset.needsAtlasIcon = "true";
+                    pendingFormData = formData;
+                    dialog.close();
+                    if (cropDialog.open) cropDialog.close();
+                    openCropDialog();
+                    return;
+                }
                 const validationMessage = problem?.errors
                     ? Object.values(problem.errors).flat()[0]
                     : null;
@@ -264,15 +281,20 @@ export function initializeVoteDialog() {
                 "The Steam library card could not be loaded. Please try again.";
             cropError.hidden = false;
         });
-        const source = currentTrigger.dataset.libraryCardUrl
-            || `https://cdn.cloudflare.steamstatic.com/steam/apps/${encodeURIComponent(currentTrigger.dataset.steamAppId)}/library_600x900.jpg`;
-        fetch(source, { headers: { Accept: "image/jpeg" } })
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error("The Steam library card is unavailable.");
-                }
-
-                return response.blob();
+        cropDialog.querySelector("[data-crop-instructions]").textContent =
+            "Drag the current library card to frame a circular icon. The crop is saved at 96 pixels in diameter."
+            + (currentTrigger.dataset.gameIcon
+                ? " The library artwork has changed, so a new icon is required."
+                : "");
+        // Discover the current hash again when recropping; a CDN cache may still
+        // contain the old card even though its request succeeds.
+        fetch(`/api/games/${encodeURIComponent(gameId)}/library-card-url`, {
+            signal: AbortSignal.timeout(5000), cache: "no-store"
+        })
+            .then((response) => response.ok ? response.json() : null)
+            .catch(() => null)
+            .then((artwork) => {
+                return fetchLibraryCardBlob(gameId, artwork?.hash ? artwork.url : null, artwork?.hash);
             })
             .then((blob) => {
                 if (loadId !== cropLoadId) {

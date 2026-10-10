@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Security.Cryptography;
 using MMMAtlas.Data;
 
 namespace MMMAtlas.Voting;
@@ -36,6 +37,8 @@ public sealed class VotingManager(DatabaseConnection database)
             await connection.BeginTransactionAsync(cancellationToken);
 
         bool isFirstVote;
+        bool needsIconUpdate;
+        string? libraryCardHash;
         await using (var gameCommand = connection.CreateCommand())
         {
             gameCommand.Transaction = transaction;
@@ -52,7 +55,9 @@ public sealed class VotingManager(DatabaseConnection database)
                         SELECT 1
                         FROM GameVoteAggregates
                         WHERE GameId = $gameId
-                    );
+                    ),
+                    (SELECT AtlasIconNeedsUpdate FROM SteamGames WHERE GameId = $gameId),
+                    (SELECT LibraryCardHash FROM SteamGames WHERE GameId = $gameId);
                 """;
             gameCommand.Parameters.AddWithValue("$gameId", gameId);
 
@@ -65,15 +70,22 @@ public sealed class VotingManager(DatabaseConnection database)
             }
 
             isFirstVote = reader.GetBoolean(1);
+            needsIconUpdate = reader.GetBoolean(2);
+            libraryCardHash = reader.IsDBNull(3) ? null : reader.GetString(3);
         }
 
-        if (isFirstVote && atlasIcon is null)
+        if ((isFirstVote || needsIconUpdate) && atlasIcon is null)
         {
-            throw new AtlasIconRequiredException();
+            throw new AtlasIconRequiredException(needsIconUpdate);
         }
 
-        if (isFirstVote)
+        if ((isFirstVote || needsIconUpdate) && atlasIcon is not null)
         {
+            if (libraryCardHash is not null && libraryCardHash !=
+                Convert.ToHexString(SHA256.HashData(atlasIcon.LibraryCard.ImageContent)))
+            {
+                throw new AtlasIconRequiredException(true);
+            }
             await using var iconCommand = connection.CreateCommand();
             iconCommand.Transaction = transaction;
             iconCommand.CommandText = """
@@ -101,7 +113,16 @@ public sealed class VotingManager(DatabaseConnection database)
                     $libraryCardHeightPixels,
                     CURRENT_TIMESTAMP
                 )
-                ON CONFLICT (GameId) DO NOTHING;
+                ON CONFLICT (GameId) DO UPDATE SET
+                    ImageContent = excluded.ImageContent,
+                    DiameterPixels = excluded.DiameterPixels,
+                    LibraryCardContentType = excluded.LibraryCardContentType,
+                    LibraryCardContent = excluded.LibraryCardContent,
+                    LibraryCardWidthPixels = excluded.LibraryCardWidthPixels,
+                    LibraryCardHeightPixels = excluded.LibraryCardHeightPixels;
+
+                UPDATE SteamGames SET AtlasIconNeedsUpdate = 0
+                WHERE GameId = $gameId;
                 """;
             iconCommand.Parameters.AddWithValue("$gameId", gameId);
             iconCommand.Parameters.AddWithValue(
@@ -422,8 +443,10 @@ public sealed class LibraryCard
 
 public sealed class AtlasIconRequiredException : InvalidOperationException
 {
-    public AtlasIconRequiredException()
-        : base("The first vote for a game must include an atlas icon.")
+    public AtlasIconRequiredException(bool needsUpdate = false)
+        : base(needsUpdate
+            ? "The library artwork has changed. Please crop a new atlas icon from the current card."
+            : "The first vote for a game must include an atlas icon.")
     {
     }
 }

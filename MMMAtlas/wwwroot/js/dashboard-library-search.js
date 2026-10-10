@@ -1,3 +1,9 @@
+import { initializeDashboardGameImage } from "./dashboard-game-images.js";
+
+document.querySelectorAll(".dashboard-game-artwork").forEach((image) => {
+    initializeDashboardGameImage(image);
+});
+
 const searchForm = document.querySelector("[data-dashboard-library-search]");
 const gamesRegion = document.querySelector("[data-dashboard-games-region]");
 
@@ -125,15 +131,15 @@ function createGameRow(game) {
 
     const artwork = document.createElement("img");
     artwork.className = "dashboard-game-artwork";
-    artwork.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${encodeURIComponent(game.steamAppId)}/library_600x900.jpg`;
     artwork.alt = "";
     artwork.width = 48;
     artwork.height = 72;
     artwork.loading = "lazy";
+    initializeDashboardGameImage(artwork, game.gameId, game.libraryCardUrl);
 
     const copy = document.createElement("span");
     copy.className = "dashboard-game-copy";
-    if (game.needsAtlasIcon) {
+    if (game.needsAtlasIcon && !game.hasAtlasIcon) {
         const name = document.createElement("strong");
         name.textContent = game.name;
         copy.append(name);
@@ -159,7 +165,7 @@ function createGameRow(game) {
     voteButton.dataset.gameId = game.gameId;
     voteButton.dataset.steamAppId = game.steamAppId;
     voteButton.dataset.gameTitle = game.name;
-    voteButton.dataset.libraryCardUrl = `/api/games/${encodeURIComponent(game.gameId)}/library-card`;
+    voteButton.dataset.libraryCardUrl = game.libraryCardUrl || "";
     voteButton.dataset.needsAtlasIcon = String(game.needsAtlasIcon);
     voteButton.dataset.isPublic = String(game.isPublic);
     if (game.hasAtlasIcon) {

@@ -9,7 +9,8 @@ public sealed class SteamAuthenticationManager(
     DatabaseConnection database,
     SteamApiClient steamApiClient,
     ISteamStoreClient steamStoreClient,
-    ILogger<SteamAuthenticationManager> logger)
+    ILogger<SteamAuthenticationManager> logger,
+    SteamArtworkService artworkService)
 {
     public async Task<SteamSignInResult> CompleteSignInAsync(
         long steamId,
@@ -77,6 +78,12 @@ public sealed class SteamAuthenticationManager(
             library,
             newGameMetadata,
             cancellationToken);
+
+        if (library.Availability == SteamLibraryAvailability.Available)
+        {
+            await artworkService.ImportMissingAsync(
+                library.Games.Select(game => game.AppId), cancellationToken);
+        }
 
         logger.LogInformation(
             "Steam data refresh completed for UserId {UserId} in "
@@ -221,8 +228,9 @@ public sealed class SteamAuthenticationManager(
                 vote.MesoScore,
                 vote.MacroScore,
                 COALESCE(vote.IsPublic, 0),
-                CASE WHEN aggregate.GameId IS NULL THEN 1 ELSE 0 END,
-                CASE WHEN atlas.GameId IS NULL THEN 0 ELSE 1 END
+                CASE WHEN aggregate.GameId IS NULL OR steam.AtlasIconNeedsUpdate = 1 THEN 1 ELSE 0 END,
+                CASE WHEN atlas.GameId IS NULL THEN 0 ELSE 1 END,
+                steam.LibraryCardUrl
             FROM SteamLibraryGames AS library
             INNER JOIN SteamGames AS steam
                 ON steam.GameId = library.GameId
@@ -258,7 +266,8 @@ public sealed class SteamAuthenticationManager(
                 gamesReader.IsDBNull(8) ? null : gamesReader.GetDouble(8),
                 gamesReader.GetBoolean(9),
                 gamesReader.GetBoolean(10),
-                gamesReader.GetBoolean(11)));
+                gamesReader.GetBoolean(11),
+                ReadNullableString(gamesReader, 12)));
         }
 
         return dashboard with { MostPlayedGames = games };
@@ -836,4 +845,5 @@ public sealed record SteamDashboardGame(
     double? MacroScore,
     bool IsPublic,
     bool NeedsAtlasIcon,
-    bool HasAtlasIcon);
+    bool HasAtlasIcon,
+    string? LibraryCardUrl = null);

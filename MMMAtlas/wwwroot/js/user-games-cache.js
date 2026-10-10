@@ -76,6 +76,7 @@ function mergeVote(ownedGame, vote) {
         microScore: Number(vote.microScore),
         mesoScore: Number(vote.mesoScore),
         macroScore: Number(vote.macroScore),
-        isPublic: vote.isPublic
+        isPublic: vote.isPublic,
+        needsAtlasIcon: vote.needsAtlasIcon ?? false
     };
 }

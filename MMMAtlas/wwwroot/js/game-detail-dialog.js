@@ -1,5 +1,6 @@
 import { getOwnedGameState } from "./user-games-cache.js";
 import { createAxisTooltip } from "./axis-tooltips.js";
+import { initializeDashboardGameImage } from "./dashboard-game-images.js";
 
 const gameCache = new Map();
 const publicVotesCache = new Map();
@@ -191,20 +192,10 @@ function renderGame(content, game, publicVotes, ownershipState) {
     artwork.className = "game-detail-artwork";
 
     const image = document.createElement("img");
-    image.src = `/api/games/${encodeURIComponent(game.gameId)}/library-card`;
+    initializeDashboardGameImage(image, game.gameId, game.libraryCardUrl);
     image.alt = `${game.name} library card`;
     image.width = 600;
     image.height = 900;
-    image.addEventListener("error", () => {
-        const placeholder = document.createElement("div");
-        placeholder.className = "game-detail-artwork-placeholder";
-        const mark = document.createElement("strong");
-        mark.textContent = "MMM";
-        const message = document.createElement("span");
-        message.textContent = "Library card unavailable";
-        placeholder.append(mark, message);
-        artwork.replaceChildren(placeholder);
-    }, { once: true });
     artwork.append(image);
 
     const overview = document.createElement("section");
@@ -447,9 +438,8 @@ function createVotingControl(game, ownedGame, dataCollectionEnabled) {
     button.dataset.steamAppId = game.steamAppId;
     button.dataset.gameTitle = game.name;
     button.dataset.gameIcon = game.imageUrl ?? "";
-    button.dataset.libraryCardUrl =
-        `/api/games/${encodeURIComponent(game.gameId)}/library-card`;
-    button.dataset.needsAtlasIcon = "false";
+    button.dataset.libraryCardUrl = game.libraryCardUrl || ownedGame.libraryCardUrl || "";
+    button.dataset.needsAtlasIcon = String(game.needsAtlasIcon || ownedGame.needsAtlasIcon || false);
     button.dataset.isPublic = String(ownedGame.isPublic ?? false);
     if (ownedGame.hasVoted) {
         button.dataset.microScore = Number(ownedGame.microScore).toFixed(1);

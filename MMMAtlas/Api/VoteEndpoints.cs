@@ -55,6 +55,7 @@ public static class VoteEndpoints
         IAntiforgery antiforgery,
         VotingManager manager,
         AtlasEventBroadcaster broadcaster,
+        SteamArtworkService artworkService,
         ILogger<VotingManager> logger,
         CancellationToken cancellationToken)
     {
@@ -113,10 +114,11 @@ public static class VoteEndpoints
         }
         catch (AtlasIconRequiredException exception)
         {
-            return Results.ValidationProblem(new Dictionary<string, string[]>
+            return Results.Json(new
             {
-                ["atlasIcon"] = [exception.Message]
-            });
+                errors = new Dictionary<string, string[]> { ["atlasIcon"] = [exception.Message] },
+                needsAtlasIcon = true
+            }, statusCode: StatusCodes.Status400BadRequest);
         }
 
         if (result is null)
@@ -125,6 +127,10 @@ public static class VoteEndpoints
                 statusCode: StatusCodes.Status404NotFound,
                 title: "Game not found");
         }
+
+        // A changed image affects the next vote, never the vote that detected it.
+        await artworkService.RefreshIfStaleAsync(gameId, cancellationToken);
+        var artwork = await artworkService.ReadCachedAsync(gameId, cancellationToken);
 
         logger.LogInformation(
             "Vote {VoteOperation} for GameId {GameId} by UserId {UserId}; "
@@ -159,7 +165,8 @@ public static class VoteEndpoints
             result.Scores.MesoScore,
             result.Scores.MacroScore,
             result.Scores.IsPublic,
-            result.Amended));
+            result.Amended,
+            artwork?.AtlasIconNeedsUpdate ?? false));
     }
 
     private static async Task<(AtlasIcon? Icon, string? Error)>
@@ -218,7 +225,7 @@ public static class VoteEndpoints
             libraryCardStream,
             cancellationToken);
         var libraryCardContent = libraryCardStream.ToArray();
-        if (!TryReadJpegDimensions(
+        if (!JpegDimensions.TryRead(
             libraryCardContent,
             out var libraryCardWidth,
             out var libraryCardHeight))
@@ -273,85 +280,6 @@ public static class VoteEndpoints
         return true;
     }
 
-    private static bool TryReadJpegDimensions(
-        ReadOnlySpan<byte> content,
-        out int width,
-        out int height)
-    {
-        width = 0;
-        height = 0;
-        if (content.Length < 4 || content[0] != 0xff || content[1] != 0xd8)
-        {
-            return false;
-        }
-
-        var index = 2;
-        while (index + 3 < content.Length)
-        {
-            while (index < content.Length && content[index] != 0xff)
-            {
-                index++;
-            }
-
-            while (index < content.Length && content[index] == 0xff)
-            {
-                index++;
-            }
-
-            if (index >= content.Length)
-            {
-                return false;
-            }
-
-            var marker = content[index++];
-            if (marker is 0xd8 or 0xd9 or 0x01
-                || marker is >= 0xd0 and <= 0xd7)
-            {
-                continue;
-            }
-
-            if (index + 1 >= content.Length)
-            {
-                return false;
-            }
-
-            var segmentLength = BinaryPrimitives.ReadUInt16BigEndian(
-                content[index..(index + 2)]);
-            if (segmentLength < 2 || index + segmentLength > content.Length)
-            {
-                return false;
-            }
-
-            if (IsStartOfFrame(marker))
-            {
-                if (segmentLength < 7)
-                {
-                    return false;
-                }
-
-                height = BinaryPrimitives.ReadUInt16BigEndian(
-                    content[(index + 3)..(index + 5)]);
-                width = BinaryPrimitives.ReadUInt16BigEndian(
-                    content[(index + 5)..(index + 7)]);
-                return width > 0 && height > 0;
-            }
-
-            if (marker == 0xda)
-            {
-                return false;
-            }
-
-            index += segmentLength;
-        }
-
-        return false;
-    }
-
-    private static bool IsStartOfFrame(byte marker) =>
-        marker is 0xc0 or 0xc1 or 0xc2 or 0xc3
-            or 0xc5 or 0xc6 or 0xc7
-            or 0xc9 or 0xca or 0xcb
-            or 0xcd or 0xce or 0xcf;
 
     private static bool TryReadScore(
         string? value,
@@ -386,5 +314,6 @@ public static class VoteEndpoints
         decimal MesoScore,
         decimal MacroScore,
         bool IsPublic,
-        bool Amended);
+        bool Amended,
+        bool NeedsAtlasIcon);
 }

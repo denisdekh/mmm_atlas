@@ -75,6 +75,8 @@ public sealed class SteamAuthenticationManagerTests
         Assert.AreEqual("Atlas Tester", optedIn.PersonaName);
         Assert.HasCount(2, optedIn.MostPlayedGames);
         Assert.AreEqual("Long Game", optedIn.MostPlayedGames[0].Name);
+        Assert.IsNotNull(optedIn.MostPlayedGames[0].LibraryCardUrl);
+        Assert.AreEqual(2L, CountCachedArtwork());
         Assert.AreEqual(
             9000,
             optedIn.MostPlayedGames[0].PlaytimeForeverMinutes);
@@ -187,6 +189,19 @@ public sealed class SteamAuthenticationManagerTests
         return (long)command.ExecuteScalar()!;
     }
 
+    private long CountCachedArtwork()
+    {
+        using var connection = new SqliteConnection($"Data Source={_databasePath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*) FROM SteamGames WHERE LibraryCardUrl IS NOT NULL
+                AND length(LibraryCardContent) > 0 AND length(LibraryCardHash) = 64
+                AND LibraryCardHashCheckedAtUtc IS NOT NULL AND AtlasIconNeedsUpdate = 0;
+            """;
+        return (long)command.ExecuteScalar()!;
+    }
+
     private (string? Description, int? ReleaseYear, bool? IsFree)
         ReadStoreMetadata(
         int appId)
@@ -256,7 +271,9 @@ public sealed class SteamAuthenticationManagerTests
             database,
             apiClient,
             _storeClient,
-            NullLogger<SteamAuthenticationManager>.Instance);
+            NullLogger<SteamAuthenticationManager>.Instance,
+            new SteamArtworkService(database, new ArtworkTestHttpClientFactory(),
+                NullLogger<SteamArtworkService>.Instance));
     }
 
     private sealed class TestSteamStoreClient : ISteamStoreClient

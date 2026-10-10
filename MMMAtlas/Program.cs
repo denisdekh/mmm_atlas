@@ -79,11 +79,18 @@ builder.Services.AddHttpClient<ISteamStoreClient, SteamStoreClient>(client =>
 .RemoveAllLoggers();
 builder.Services.AddHttpClient("SteamLibraryImages", client =>
 {
-    client.BaseAddress = new Uri("https://cdn.cloudflare.steamstatic.com/");
     client.Timeout = TimeSpan.FromSeconds(15);
+})
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+.RemoveAllLoggers();
+builder.Services.AddHttpClient("SteamStoreBrowse", client =>
+{
+    client.BaseAddress = new Uri("https://api.steampowered.com/");
+    client.Timeout = TimeSpan.FromSeconds(10);
 })
 .RemoveAllLoggers();
 builder.Services.AddScoped<SteamAuthenticationManager>();
+builder.Services.AddSingleton<SteamArtworkService>();
 builder.Services.AddScoped<VotingManager>();
 builder.Services.AddSingleton<MMMAtlas.AtlasEvents.AtlasEventBroadcaster>();
 

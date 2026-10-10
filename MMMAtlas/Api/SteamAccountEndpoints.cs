@@ -40,8 +40,12 @@ public static class SteamAccountEndpoints
                 vote.MicroScore,
                 vote.MesoScore,
                 vote.MacroScore,
-                COALESCE(vote.IsPublic, 0)
+                COALESCE(vote.IsPublic, 0),
+                CASE WHEN aggregate.GameId IS NULL OR steam.AtlasIconNeedsUpdate = 1 THEN 1 ELSE 0 END,
+                steam.LibraryCardUrl
             FROM SteamLibraryGames AS library
+            INNER JOIN SteamGames AS steam ON steam.GameId = library.GameId
+            LEFT JOIN GameVoteAggregates AS aggregate ON aggregate.GameId = library.GameId
             LEFT JOIN Votes AS vote
                 ON vote.UserId = library.UserId
                 AND vote.GameId = library.GameId
@@ -78,7 +82,9 @@ public static class SteamAccountEndpoints
                 MicroScore: reader.IsDBNull(2) ? null : reader.GetDouble(2),
                 MesoScore: reader.IsDBNull(3) ? null : reader.GetDouble(3),
                 MacroScore: reader.IsDBNull(4) ? null : reader.GetDouble(4),
-                IsPublic: reader.GetBoolean(5)));
+                IsPublic: reader.GetBoolean(5),
+                NeedsAtlasIcon: reader.GetBoolean(6),
+                LibraryCardUrl: reader.IsDBNull(7) ? null : reader.GetString(7)));
         }
 
         httpContext.Response.Headers.CacheControl = "private, no-store";
@@ -126,8 +132,9 @@ public static class SteamAccountEndpoints
                     vote.MesoScore,
                     vote.MacroScore,
                     COALESCE(vote.IsPublic, 0) AS IsPublic,
-                    CASE WHEN aggregate.GameId IS NULL THEN 1 ELSE 0 END AS NeedsAtlasIcon,
-                    CASE WHEN atlas.GameId IS NULL THEN 0 ELSE 1 END AS HasAtlasIcon
+                    CASE WHEN aggregate.GameId IS NULL OR steam.AtlasIconNeedsUpdate = 1 THEN 1 ELSE 0 END AS NeedsAtlasIcon,
+                    CASE WHEN atlas.GameId IS NULL THEN 0 ELSE 1 END AS HasAtlasIcon,
+                    steam.LibraryCardUrl
                 FROM SteamLibraryGames AS library
                 INNER JOIN SteamGames AS steam
                     ON steam.GameId = library.GameId
@@ -153,7 +160,8 @@ public static class SteamAccountEndpoints
                 MacroScore,
                 IsPublic,
                 NeedsAtlasIcon,
-                HasAtlasIcon
+                HasAtlasIcon,
+                LibraryCardUrl
             FROM OwnedLibrary
             WHERE instr(lower(Name), lower($query)) > 0
             ORDER BY
@@ -192,7 +200,8 @@ public static class SteamAccountEndpoints
                 MacroScore: reader.IsDBNull(7) ? null : reader.GetDouble(7),
                 IsPublic: reader.GetBoolean(8),
                 NeedsAtlasIcon: reader.GetBoolean(9),
-                HasAtlasIcon: reader.GetBoolean(10)));
+                HasAtlasIcon: reader.GetBoolean(10),
+                LibraryCardUrl: reader.IsDBNull(11) ? null : reader.GetString(11)));
         }
 
         httpContext.Response.Headers.CacheControl = "private, no-store";
@@ -261,7 +270,9 @@ public static class SteamAccountEndpoints
         double? MicroScore,
         double? MesoScore,
         double? MacroScore,
-        bool IsPublic);
+        bool IsPublic,
+        bool NeedsAtlasIcon,
+        string? LibraryCardUrl);
 
     private sealed record LibrarySearchGameDto(
         long GameId,
@@ -274,5 +285,6 @@ public static class SteamAccountEndpoints
         double? MacroScore,
         bool IsPublic,
         bool NeedsAtlasIcon,
-        bool HasAtlasIcon);
+        bool HasAtlasIcon,
+        string? LibraryCardUrl);
 }

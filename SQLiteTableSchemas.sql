@@ -93,6 +93,12 @@ CREATE TABLE IF NOT EXISTS SteamGames
     ReleaseYear  INTEGER NULL,
     IsFree       INTEGER NULL,
     StoreMetadataFetchedAtUtc TEXT NULL,
+    LibraryCardUrl TEXT NULL,
+    LibraryCardContent BLOB NULL,
+    LibraryCardContentType TEXT NULL,
+    LibraryCardHash TEXT NULL,
+    LibraryCardHashCheckedAtUtc TEXT NULL,
+    AtlasIconNeedsUpdate INTEGER NOT NULL DEFAULT 0 CHECK (AtlasIconNeedsUpdate IN (0, 1)),
     CreatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UpdatedAtUtc TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 

@@ -98,6 +98,19 @@ public static class DatabaseInitializer
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
+        foreach (var (column, definition) in new[]
+        {
+            ("LibraryCardUrl", "TEXT NULL"),
+            ("LibraryCardContent", "BLOB NULL"),
+            ("LibraryCardContentType", "TEXT NULL"),
+            ("LibraryCardHash", "TEXT NULL"),
+            ("LibraryCardHashCheckedAtUtc", "TEXT NULL"),
+            ("AtlasIconNeedsUpdate", "INTEGER NOT NULL DEFAULT 0 CHECK (AtlasIconNeedsUpdate IN (0, 1))")
+        })
+        {
+            await EnsureColumnAsync(connection, "SteamGames", column, definition, cancellationToken);
+        }
+
         await EnsureColumnAsync(
             connection,
             "SteamAccounts",

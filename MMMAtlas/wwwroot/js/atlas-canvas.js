@@ -218,6 +218,7 @@ class AtlasController {
         });
         document.addEventListener("mmm-atlas:game-updated", (event) => {
             if (event.detail?.game) {
+                this.iconCache.invalidate(event.detail.game.imageUrl);
                 this.upsertGame(event.detail.game, { animate: true });
                 this.applyFilters();
             } else if (event.detail?.gameId) {
@@ -339,6 +340,8 @@ class AtlasController {
 
     async refreshOne(gameId) {
         const game = await fetchJson(`/api/games/${encodeURIComponent(gameId)}`);
+        // A vote may have replaced the crop without changing its application URL.
+        this.iconCache.invalidate(game.imageUrl);
         const result = this.upsertGame(game, { animate: true });
         this.updateFilterOptions();
         this.applyFilters({ announce: false });
@@ -1672,6 +1675,10 @@ class IconCache {
         this.queue = [];
         this.active = 0;
         this.clock = 0;
+    }
+
+    invalidate(url) {
+        if (url) this.entries.delete(url);
     }
 
     get(url, tier) {
