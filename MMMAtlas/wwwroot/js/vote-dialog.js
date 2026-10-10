@@ -1,5 +1,6 @@
 import { updateCachedVote } from "./user-games-cache.js";
 import { initializeDashboardGameImage, fetchLibraryCardBlob } from "./dashboard-game-images.js";
+import { clampCropOffsets, cropFillColor, drawCroppedIcon } from "./icon-crop-geometry.js";
 
 const scoreNames = ["microScore", "mesoScore", "macroScore"];
 
@@ -193,10 +194,9 @@ export function initializeVoteDialog() {
         }
 
         const transform = getCropTransform();
-        const maximumX = Math.max(0, (transform.width - cropPreviewDiameter) / 2);
-        const maximumY = Math.max(0, (transform.height - cropPreviewDiameter) / 2);
-        offsetX = Math.max(-maximumX, Math.min(maximumX, offsetX));
-        offsetY = Math.max(-maximumY, Math.min(maximumY, offsetY));
+        const offsets = clampCropOffsets(transform.width, transform.height, offsetX, offsetY);
+        offsetX = offsets.x;
+        offsetY = offsets.y;
     };
 
     const drawCrop = () => {
@@ -207,6 +207,8 @@ export function initializeVoteDialog() {
 
         clampOffsets();
         const transform = getCropTransform();
+        cropContext.fillStyle = cropFillColor;
+        cropContext.fillRect(0, 0, cropCanvasSize, cropCanvasSize);
         cropContext.drawImage(
             cropImage,
             (cropCanvasSize - transform.width) / 2 + offsetX,
@@ -332,37 +334,15 @@ export function initializeVoteDialog() {
     };
 
     const createCroppedIcon = () => new Promise((resolve, reject) => {
+        clampOffsets();
         const transform = getCropTransform();
-        const sourceSize = cropPreviewDiameter / transform.scale;
-        const sourceX = cropImage.naturalWidth / 2
-            - offsetX / transform.scale
-            - sourceSize / 2;
-        const sourceY = cropImage.naturalHeight / 2
-            - offsetY / transform.scale
-            - sourceSize / 2;
         const output = document.createElement("canvas");
         output.width = savedIconDiameter;
         output.height = savedIconDiameter;
         const outputContext = output.getContext("2d");
 
-        outputContext.beginPath();
-        outputContext.arc(
-            savedIconDiameter / 2,
-            savedIconDiameter / 2,
-            savedIconDiameter / 2,
-            0,
-            Math.PI * 2);
-        outputContext.clip();
-        outputContext.drawImage(
-            cropImage,
-            sourceX,
-            sourceY,
-            sourceSize,
-            sourceSize,
-            0,
-            0,
-            savedIconDiameter,
-            savedIconDiameter);
+        drawCroppedIcon(outputContext, cropImage, transform, offsetX, offsetY,
+            cropPreviewDiameter, savedIconDiameter);
         output.toBlob((blob) => {
             if (blob) {
                 resolve(blob);

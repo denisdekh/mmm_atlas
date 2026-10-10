@@ -24,6 +24,9 @@ public static class SteamAccountEndpoints
         endpoints.MapGet("/api/me/games/search", SearchOwnedGamesAsync)
             .RequireAuthorization()
             .WithTags("Steam account");
+        endpoints.MapGet("/api/me/games/most-played", GetMostPlayedGamesAsync)
+            .RequireAuthorization()
+            .WithTags("Steam account");
 
         return endpoints;
     }
@@ -116,6 +119,26 @@ public static class SteamAccountEndpoints
             });
         }
 
+        return await ReadLibraryGamesAsync(query, 0, -1, httpContext, database, cancellationToken);
+    }
+
+    private static Task<IResult> GetMostPlayedGamesAsync(
+        int? offset,
+        int? limit,
+        HttpContext httpContext,
+        DatabaseConnection database,
+        CancellationToken cancellationToken) =>
+        ReadLibraryGamesAsync(null, Math.Max(0, offset ?? 0),
+            Math.Clamp(limit ?? 30, 1, 300), httpContext, database, cancellationToken);
+
+    private static async Task<IResult> ReadLibraryGamesAsync(
+        string? query,
+        int offset,
+        int limit,
+        HttpContext httpContext,
+        DatabaseConnection database,
+        CancellationToken cancellationToken)
+    {
         const string sql = """
             WITH OwnedLibrary AS
             (
@@ -163,15 +186,17 @@ public static class SteamAccountEndpoints
                 HasAtlasIcon,
                 LibraryCardUrl
             FROM OwnedLibrary
-            WHERE instr(lower(Name), lower($query)) > 0
+            WHERE $query IS NULL OR instr(lower(Name), lower($query)) > 0
             ORDER BY
+                CASE WHEN $query IS NULL THEN PlaytimeForeverMinutes END DESC,
                 CASE
                     WHEN lower(Name) = lower($query) THEN 0
                     WHEN lower(Name) LIKE lower($query) || '%' THEN 1
                     ELSE 2
                 END,
-                Name COLLATE NOCASE,
-                SteamAppId;
+                CASE WHEN $query IS NOT NULL THEN Name END COLLATE NOCASE,
+                SteamAppId
+            LIMIT $limit OFFSET $offset;
             """;
 
         await using var connection = new SqliteConnection(database.Value);
@@ -182,7 +207,9 @@ public static class SteamAccountEndpoints
         command.Parameters.AddWithValue(
             "$userId",
             GetUserId(httpContext.User));
-        command.Parameters.AddWithValue("$query", query);
+        command.Parameters.AddWithValue("$query", (object?)query ?? DBNull.Value);
+        command.Parameters.AddWithValue("$limit", limit);
+        command.Parameters.AddWithValue("$offset", offset);
 
         var games = new List<LibrarySearchGameDto>();
         await using var reader =

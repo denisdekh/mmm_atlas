@@ -7,6 +7,72 @@ document.querySelectorAll(".dashboard-game-artwork").forEach((image) => {
 const searchForm = document.querySelector("[data-dashboard-library-search]");
 const gamesRegion = document.querySelector("[data-dashboard-games-region]");
 
+initializeMostPlayedGames(gamesRegion?.querySelector("[data-dashboard-games-initial]"));
+
+// Keep this grid alive while search results are displayed, preserving its loaded rows.
+export function initializeMostPlayedGames(initialGames) {
+    const list = initialGames?.querySelector(".dashboard-games");
+    const more = initialGames?.querySelector("[data-dashboard-games-more]");
+    const message = initialGames?.querySelector("[data-dashboard-games-more-status]");
+    if (!list || !more) return;
+
+    let rows = 3;
+    let columns = 1;
+    let hasMore = true;
+    let loading = false;
+    const updateColumns = () => {
+        // Hidden search grids have no layout; retain the last measured column count.
+        if (list.getBoundingClientRect().width > 0) {
+            const tracks = window.getComputedStyle(list).gridTemplateColumns;
+            columns = Math.max(1, tracks.split(" ").filter(Boolean).length);
+        }
+    };
+    const reveal = () => {
+        Array.from(list.children).forEach((item, index) => {
+            item.hidden = index >= rows * columns;
+        });
+        more.hidden = !hasMore && list.children.length <= rows * columns;
+    };
+    const fillRows = async () => {
+        updateColumns();
+        reveal();
+        if (loading) return;
+        loading = true;
+        more.disabled = true;
+        try {
+            // Fetch one extra card to establish whether another batch is available.
+            while (hasMore && list.children.length <= rows * columns) {
+                const limit = Math.min(300, rows * columns - list.children.length + 1);
+                message.textContent = "Loading games…";
+                const response = await fetch(
+                    `/api/me/games/most-played?offset=${list.children.length}&limit=${limit}`,
+                    { headers: { Accept: "application/json" } });
+                if (!response.ok) throw new Error("Unable to load games.");
+                const games = await response.json();
+                games.forEach((game) => list.append(createGameRow(game)));
+                hasMore = games.length === limit;
+                reveal();
+            }
+            message.textContent = "";
+        } catch {
+            message.textContent = "Games could not be loaded. Try again.";
+        } finally {
+            loading = false;
+            more.disabled = false;
+            reveal();
+        }
+    };
+    more.addEventListener("click", () => {
+        // A failed request retries the existing target instead of skipping a batch.
+        if (list.children.length >= rows * columns) rows += 3;
+        fillRows();
+    });
+    if (typeof ResizeObserver !== "undefined") {
+        new ResizeObserver(fillRows).observe(list);
+    }
+    fillRows();
+}
+
 if (searchForm && gamesRegion) {
     const queryInput = searchForm.querySelector("[data-dashboard-library-query]");
     const clearButton = searchForm.querySelector("[data-dashboard-library-clear]");
@@ -125,66 +191,35 @@ if (searchForm && gamesRegion) {
     });
 }
 
-function createGameRow(game) {
+export function createGameRow(game) {
     const item = document.createElement("li");
     item.className = "dashboard-game";
 
     const artwork = document.createElement("img");
     artwork.className = "dashboard-game-artwork";
-    artwork.alt = "";
-    artwork.width = 48;
-    artwork.height = 72;
+    artwork.alt = game.name;
+    artwork.width = 96;
+    artwork.height = 144;
     artwork.loading = "lazy";
     initializeDashboardGameImage(artwork, game.gameId, game.libraryCardUrl);
 
-    const copy = document.createElement("span");
-    copy.className = "dashboard-game-copy";
-    if (game.needsAtlasIcon && !game.hasAtlasIcon) {
-        const name = document.createElement("strong");
-        name.textContent = game.name;
-        copy.append(name);
-    } else {
-        const name = document.createElement("button");
-        name.type = "button";
-        name.className = "game-name-button";
-        name.dataset.gameDetailTrigger = "";
-        name.dataset.gameId = game.gameId;
-        name.dataset.gameTitle = game.name;
-        name.textContent = game.name;
-        copy.append(name);
-    }
+    const details = document.createElement("button");
+    details.type = "button";
+    details.className = "dashboard-game-details";
+    details.dataset.gameDetailTrigger = "";
+    details.dataset.gameId = game.gameId;
+    details.dataset.gameTitle = game.name;
+    details.setAttribute("aria-label", `View details for ${game.name}`);
+    details.append(artwork);
 
     const playtime = document.createElement("small");
-    playtime.textContent = `${formatHours(game.playtimeForeverMinutes)} hours played`;
-    copy.append(playtime);
+    playtime.className = "dashboard-game-playtime";
+    playtime.textContent = `${formatHours(game.playtimeForeverMinutes)} hrs`;
 
-    const voteButton = document.createElement("button");
-    voteButton.type = "button";
-    voteButton.className = "ui-button ui-button-compact";
-    voteButton.dataset.voteTrigger = "";
-    voteButton.dataset.gameId = game.gameId;
-    voteButton.dataset.steamAppId = game.steamAppId;
-    voteButton.dataset.gameTitle = game.name;
-    voteButton.dataset.libraryCardUrl = game.libraryCardUrl || "";
-    voteButton.dataset.needsAtlasIcon = String(game.needsAtlasIcon);
-    voteButton.dataset.isPublic = String(game.isPublic);
-    if (game.hasAtlasIcon) {
-        voteButton.dataset.gameIcon =
-            `/api/games/${encodeURIComponent(game.gameId)}/atlas-icon`;
-    }
-    if (game.hasVoted) {
-        voteButton.dataset.microScore = Number(game.microScore).toFixed(1);
-        voteButton.dataset.mesoScore = Number(game.mesoScore).toFixed(1);
-        voteButton.dataset.macroScore = Number(game.macroScore).toFixed(1);
-    }
-    voteButton.textContent = game.hasVoted ? "Amend vote" : "Submit vote";
-
-    item.append(artwork, copy, voteButton);
+    item.append(details, playtime);
     return item;
 }
 
 function formatHours(minutes) {
-    return (Number(minutes) / 60).toLocaleString(undefined, {
-        maximumFractionDigits: 1
-    });
+    return (Number(minutes) / 60).toFixed(1);
 }

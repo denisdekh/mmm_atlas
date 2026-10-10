@@ -2083,9 +2083,12 @@ body.atlas-fullscreen-lock {
 }
 
 .dashboard-games {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7.8rem, 1fr));
+    gap: 1rem;
     width: 100%;
     margin: 0;
-    padding: 0;
+    padding: 1.25rem clamp(1.35rem, 3vw, 2rem);
     list-style: none;
 }
 
@@ -2102,21 +2105,62 @@ body.atlas-fullscreen-lock {
 }
 
 .dashboard-game {
+    display: grid;
+    grid-template-rows: auto auto;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 0.45rem;
+    background: var(--background);
+    transform-origin: center;
+    transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.dashboard-game[hidden] {
+    display: none;
+}
+
+.dashboard-games-more {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    min-height: 4.5rem;
-    padding: 0.85rem clamp(1.35rem, 3vw, 2rem);
-    border-bottom: 1px solid var(--line);
+    gap: 0.5rem;
+    padding: 0 2rem 1.25rem;
+}
+
+[data-dashboard-games-more][hidden],
+.dashboard-games-more:has(> [data-dashboard-games-more][hidden]) {
+    display: none;
+}
+
+.dashboard-game:hover {
+    z-index: 1;
+    box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.28);
+    transform: scale(1.04);
+}
+
+.dashboard-game-details {
+    display: block;
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.dashboard-game-details:focus-visible {
+    outline: 2px solid var(--macro);
+    outline-offset: 3px;
 }
 
 .dashboard-game-artwork {
-    width: 3rem;
-    height: 4.5rem;
-    flex: none;
-    border: 1px solid var(--line);
-    border-radius: 0.45rem;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
     background: var(--background);
     object-fit: cover;
 }
@@ -2134,35 +2178,26 @@ body.atlas-fullscreen-lock {
     .dashboard-game-artwork.is-loading {
         animation: none;
     }
+
+    .dashboard-game {
+        transition: none;
+    }
+
+    .dashboard-game:hover {
+        transform: none;
+    }
 }
 
-.dashboard-game:last-child {
-    border-bottom: 0;
-}
-
-.dashboard-game:hover {
-    background: rgba(255, 255, 255, 0.025);
-}
-
-.dashboard-game-copy {
-    min-width: 0;
-    display: grid;
-    flex: 1;
-    gap: 0.35rem;
-}
-
-.dashboard-game-copy strong,
-.dashboard-game-copy .game-name-button {
-    overflow: hidden;
-    padding-block: 0.1em;
-    line-height: 1.3;
-    text-overflow: ellipsis;
+.dashboard-game-playtime {
+    display: block;
+    padding: 0.45rem 0.2rem;
+    border-top: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
     white-space: nowrap;
-}
-
-.dashboard-game-copy small {
-    color: var(--muted);
-    font-size: 0.72rem;
 }
 
 .game-detail-dialog {
@@ -2323,9 +2358,9 @@ body.atlas-fullscreen-lock {
 
 .game-detail-score-header {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
 }
 
 .game-detail-score-header h3 {
@@ -2333,7 +2368,8 @@ body.atlas-fullscreen-lock {
     font-size: 1.2rem;
 }
 
-.game-detail-score-header span {
+.game-detail-score-header > span {
+    margin-left: auto;
     color: var(--muted);
     font-size: 0.8rem;
 }
@@ -2342,7 +2378,7 @@ body.atlas-fullscreen-lock {
     display: grid;
     gap: 0.75rem;
     width: 100%;
-    margin: 1rem 0 1.5rem;
+    margin: 1rem 0 0;
     padding: 1rem;
     border: 1px solid var(--line);
     border-radius: 0.85rem;
@@ -2395,6 +2431,11 @@ body.atlas-fullscreen-lock {
     color: var(--muted);
     font-size: 0.72rem;
     text-transform: uppercase;
+}
+
+.game-detail-dialog .axis-ratio-label {
+    justify-content: flex-start;
+    text-align: left;
 }
 
 .axis-tooltip {
@@ -2487,7 +2528,8 @@ body.atlas-fullscreen-lock {
 .game-detail-voting {
     display: flex;
     justify-content: flex-end;
-    margin-top: 1rem;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .game-detail-votes-section {
@@ -3117,17 +3159,6 @@ body.atlas-fullscreen-lock {
     .dashboard-library-search output {
         padding-inline: 0.5rem;
         white-space: normal;
-    }
-
-    .dashboard-game {
-        display: grid;
-        grid-template-columns: 3rem minmax(0, 1fr);
-        align-items: center;
-    }
-
-    .dashboard-game .ui-button {
-        width: 100%;
-        grid-column: 1 / -1;
     }
 
     .game-detail-dialog {

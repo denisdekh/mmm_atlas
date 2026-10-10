@@ -251,14 +251,14 @@ public static class GameEndpoints
                 ),
                 CASE WHEN atlas.ImageContent IS NULL THEN 0 ELSE 1 END,
                 CASE WHEN info.ImageContent IS NULL THEN 0 ELSE 1 END,
-                aggregate.VoteCount,
-                aggregate.MicroRatio,
-                aggregate.MesoRatio,
-                aggregate.MacroRatio,
+                COALESCE(aggregate.VoteCount, 0),
+                COALESCE(aggregate.MicroRatio, 0),
+                COALESCE(aggregate.MesoRatio, 0),
+                COALESCE(aggregate.MacroRatio, 0),
                 steam.LibraryCardUrl,
                 steam.AtlasIconNeedsUpdate
             FROM SteamGames AS steam
-            INNER JOIN GameVoteAggregates AS aggregate
+            LEFT JOIN GameVoteAggregates AS aggregate
                 ON aggregate.GameId = steam.GameId
             LEFT JOIN DevelopmentGameInfo AS info
                 ON info.GameId = steam.GameId

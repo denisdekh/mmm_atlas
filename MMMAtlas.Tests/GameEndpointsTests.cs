@@ -252,6 +252,12 @@ public sealed class GameEndpointsTests
             "Your submitted votes will not be deleted.");
         StringAssert.Contains(html, "data-dashboard-library-search");
         StringAssert.Contains(html, "data-steam-opt-out-dialog");
+        StringAssert.Contains(html, "class=\"dashboard-game-details\"");
+        StringAssert.Contains(html, "width=\"96\"");
+        StringAssert.Contains(html, "height=\"144\"");
+        StringAssert.Contains(html, "class=\"dashboard-game-playtime\">2.0 hrs");
+        Assert.IsFalse(html.Contains("dashboard-game-copy", StringComparison.Ordinal));
+        Assert.IsFalse(html.Contains("data-vote-trigger", StringComparison.Ordinal));
         Assert.IsFalse(HasEnabledCheckbox(html));
     }
 
@@ -425,6 +431,27 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(0.375, game.MicroRatio!.Value, 0.000001);
         Assert.AreEqual(0.34375, game.MesoRatio!.Value, 0.000001);
         Assert.AreEqual(0.28125, game.MacroRatio!.Value, 0.000001);
+    }
+
+    [TestMethod]
+    public async Task GetGameReturnsDetailsBeforeItsFirstVote()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+
+        // Game 2 is in the library but has no aggregate or atlas icon yet.
+        var game = await client.GetFromJsonAsync<GameResponse>("/api/games/2");
+
+        Assert.IsNotNull(game);
+        Assert.AreEqual(2, game.GameId);
+        Assert.AreEqual(0, game.VoteCount);
+        Assert.AreEqual(0d, game.MicroRatio);
+        Assert.AreEqual(0d, game.MesoRatio);
+        Assert.AreEqual(0d, game.MacroRatio);
+        var votes = await client.GetFromJsonAsync<VoteResponse[]>(
+            "/api/games/2/votes?publicOnly=true");
+        Assert.IsNotNull(votes);
+        Assert.IsEmpty(votes);
     }
 
     [TestMethod]
@@ -640,6 +667,32 @@ public sealed class GameEndpointsTests
     }
 
     [TestMethod]
+    public async Task MostPlayedGamesPagesByHoursAndOnlyReturnsTheCurrentUsersLibrary()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        var first = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+            "/api/me/games/most-played?offset=0&limit=1");
+        var second = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+            "/api/me/games/most-played?offset=1&limit=1");
+        var end = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+            "/api/me/games/most-played?offset=2&limit=1");
+
+        Assert.IsNotNull(first);
+        Assert.IsNotNull(second);
+        Assert.IsNotNull(end);
+        Assert.HasCount(1, first);
+        Assert.HasCount(1, second);
+        Assert.AreEqual(1L, first[0].GameId);
+        Assert.AreEqual(120, first[0].PlaytimeForeverMinutes);
+        Assert.AreEqual(2L, second[0].GameId);
+        Assert.AreEqual(60, second[0].PlaytimeForeverMinutes);
+        Assert.IsEmpty(end);
+    }
+
+    [TestMethod]
     public async Task SearchOwnedGamesRequiresAuthentication()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -652,6 +705,8 @@ public sealed class GameEndpointsTests
         var response = await client.GetAsync("/api/me/games/search?q=game");
 
         Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+        var mostPlayed = await client.GetAsync("/api/me/games/most-played?offset=0&limit=30");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, mostPlayed.StatusCode);
     }
 
     [TestMethod]

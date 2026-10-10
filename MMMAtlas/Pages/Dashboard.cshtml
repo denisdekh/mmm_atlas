@@ -184,51 +184,31 @@
                         <ol class="dashboard-games">
                             @foreach (var game in Model.Dashboard.MostPlayedGames)
                             {
-                                var hasVote = game.MicroScore is not null;
                                 <li class="dashboard-game">
-                                    <img
-                                        class="dashboard-game-artwork is-loading"
-                                        data-game-id="@game.GameId"
-                                        src="@(game.LibraryCardUrl ?? $"/api/games/{game.GameId}/library-card")"
-                                        alt=""
-                                        width="48"
-                                        height="72"
-                                        loading="lazy" />
-                                    <span class="dashboard-game-copy">
-                                        @if (game.HasAtlasIcon || !game.NeedsAtlasIcon)
-                                        {
-                                            <button
-                                                type="button"
-                                                class="game-name-button"
-                                                data-game-detail-trigger
-                                                data-game-id="@game.GameId"
-                                                data-game-title="@game.Name">@game.Name</button>
-                                        }
-                                        else
-                                        {
-                                            <strong>@game.Name</strong>
-                                        }
-                                        <small>@((game.PlaytimeForeverMinutes / 60d).ToString("0.#")) hours played</small>
-                                    </span>
                                     <button
                                         type="button"
-                                        class="ui-button ui-button-compact"
-                                        data-vote-trigger
+                                        class="dashboard-game-details"
+                                        data-game-detail-trigger
                                         data-game-id="@game.GameId"
-                                        data-steam-app-id="@game.SteamAppId"
                                         data-game-title="@game.Name"
-                                        data-game-icon="@(game.HasAtlasIcon ? $"/api/games/{game.GameId}/atlas-icon" : null)"
-                                        data-library-card-url="@game.LibraryCardUrl"
-                                        data-needs-atlas-icon="@game.NeedsAtlasIcon.ToString().ToLowerInvariant()"
-                                        data-micro-score="@game.MicroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                        data-meso-score="@game.MesoScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                        data-macro-score="@game.MacroScore?.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)"
-                                        data-is-public="@game.IsPublic.ToString().ToLowerInvariant()">
-                                        @(hasVote ? "Amend vote" : "Submit vote")
+                                        aria-label="View details for @game.Name">
+                                        <img
+                                            class="dashboard-game-artwork is-loading"
+                                            data-game-id="@game.GameId"
+                                            src="@(game.LibraryCardUrl ?? $"/api/games/{game.GameId}/library-card")"
+                                            alt="@game.Name"
+                                            width="96"
+                                            height="144"
+                                            loading="lazy" />
                                     </button>
+                                    <small class="dashboard-game-playtime">@((game.PlaytimeForeverMinutes / 60d).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)) hrs</small>
                                 </li>
                             }
                         </ol>
+                        <div class="dashboard-games-more">
+                            <button class="ui-button" type="button" data-dashboard-games-more>Load more</button>
+                            <output data-dashboard-games-more-status aria-live="polite"></output>
+                        </div>
                     }
                 </div>
                 <div data-dashboard-games-results hidden></div>

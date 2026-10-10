@@ -238,7 +238,10 @@ function renderGame(content, game, publicVotes, ownershipState) {
     scoreTitle.textContent = "Community score";
     const totalVotes = document.createElement("span");
     totalVotes.textContent = `${game.voteCount} ${game.voteCount === 1 ? "vote" : "votes"}`;
-    scoreHeader.append(scoreTitle, totalVotes);
+    scoreHeader.append(scoreTitle, totalVotes, createVotingControl(
+        game,
+        ownershipState.ownedGame,
+        ownershipState.dataCollectionEnabled));
 
     const chart = document.createElement("div");
     chart.className = "axis-ratio-chart";
@@ -254,10 +257,6 @@ function renderGame(content, game, publicVotes, ownershipState) {
     );
 
     scoreSection.append(scoreHeader, chart);
-    scoreSection.append(createVotingControl(
-        game,
-        ownershipState.ownedGame,
-        ownershipState.dataCollectionEnabled));
 
     const votesSection = document.createElement("section");
     votesSection.className = "game-detail-votes-section";
