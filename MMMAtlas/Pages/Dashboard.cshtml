@@ -93,9 +93,16 @@
                     Collection is enabled for your Steam profile, game library,
                     and playtime.
                 </p>
-                <button class="ui-button" type="button" data-steam-opt-out>
-                    Stop data collection
-                </button>
+                <div class="dashboard-data-actions">
+                    <button class="ui-button" type="button" data-steam-opt-out>
+                        Stop data collection
+                    </button>
+                    <form method="post" action="/api/me/steam-data/refresh" data-steam-refresh>
+                        @Html.AntiForgeryToken()
+                        <button class="ui-button" type="submit">Refresh library</button>
+                    </form>
+                </div>
+
             }
             else
             {
@@ -169,7 +176,7 @@
                             data-dashboard-library-clear
                             hidden>Clear</button>
                     </div>
-                    <output data-dashboard-library-status aria-live="polite">Search your complete stored library.</output>
+                    <output data-dashboard-library-status aria-live="polite">Search your stored library.</output>
                 </form>
             }
 
@@ -210,6 +217,7 @@
                             <output data-dashboard-games-more-status aria-live="polite"></output>
                         </div>
                     }
+                    <p class="dashboard-games-empty" data-dashboard-artwork-empty hidden>No games available</p>
                 </div>
                 <div data-dashboard-games-results hidden></div>
             </div>
@@ -246,7 +254,10 @@
     </dialog>
 }
 
+<div class="vote-toast-region" data-steam-refresh-toast role="status" aria-live="polite" aria-atomic="true"></div>
+
 @section Scripts {
+    <script type="module" src="~/js/dashboard-steam-refresh.js" asp-append-version="true"></script>
     <script type="module" src="~/js/dashboard-data-consent.js" asp-append-version="true"></script>
     <script type="module" src="~/js/dashboard-library-search.js" asp-append-version="true"></script>
 }

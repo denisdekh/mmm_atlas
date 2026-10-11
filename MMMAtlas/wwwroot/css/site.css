@@ -1608,6 +1608,7 @@ body.atlas-fullscreen-lock {
     align-items: center;
     justify-content: center;
     padding: 0.65rem 1rem;
+    margin: 0.3rem 0;
     border: 1px solid var(--line);
     border-radius: 999px;
     background: transparent;
@@ -1914,6 +1915,26 @@ body.atlas-fullscreen-lock {
     text-transform: uppercase;
 }
 
+.dashboard-data-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    width: 100%;
+    margin-top: auto;
+}
+
+.dashboard-data-actions form {
+    display: flex;
+    min-width: 0;
+    margin: 0;
+}
+
+.dashboard-data-actions .ui-button {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+}
+
 .dashboard-profile-card {
     min-height: 14rem;
     background:
@@ -2104,6 +2125,10 @@ body.atlas-fullscreen-lock {
     text-align: center;
 }
 
+.dashboard-games-empty[hidden] {
+    display: none;
+}
+
 .dashboard-game {
     display: grid;
     grid-template-rows: auto auto;
@@ -2162,11 +2187,15 @@ body.atlas-fullscreen-lock {
     border: 0;
     border-radius: 0;
     background: var(--background);
-    object-fit: cover;
+    object-fit: contain;
 }
 
 .dashboard-game-artwork.is-loading {
     animation: dashboard-artwork-pulse 1.4s ease-in-out infinite;
+}
+
+.dashboard-game-artwork.is-store-thumbnail {
+    object-fit: contain;
 }
 
 @keyframes dashboard-artwork-pulse {
@@ -2276,7 +2305,7 @@ body.atlas-fullscreen-lock {
     width: 100%;
     height: auto;
     aspect-ratio: 2 / 3;
-    object-fit: cover;
+    object-fit: contain;
 }
 
 .game-detail-artwork-placeholder {
@@ -2691,7 +2720,7 @@ body.atlas-fullscreen-lock {
     border: 1px solid var(--line);
     border-radius: 0.4rem;
     background: var(--background);
-    object-fit: cover;
+    object-fit: contain;
 }
 
 .vote-dialog form[data-vote-form] {

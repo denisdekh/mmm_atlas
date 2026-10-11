@@ -10,7 +10,8 @@ public sealed class SteamAuthenticationManager(
     SteamApiClient steamApiClient,
     ISteamStoreClient steamStoreClient,
     ILogger<SteamAuthenticationManager> logger,
-    SteamArtworkService artworkService)
+    SteamArtworkService artworkService,
+    SteamLibraryFilter libraryFilter)
 {
     public async Task<SteamSignInResult> CompleteSignInAsync(
         long steamId,
@@ -68,7 +69,7 @@ public sealed class SteamAuthenticationManager(
             cancellationToken);
 
         await Task.WhenAll(profileTask, libraryTask);
-        var library = await libraryTask;
+        var library = await libraryFilter.FilterAsync(await libraryTask, cancellationToken);
         var newGameMetadata = await FetchNewGameMetadataAsync(
             library,
             cancellationToken);

@@ -14,12 +14,16 @@ export function initializeMostPlayedGames(initialGames) {
     const list = initialGames?.querySelector(".dashboard-games");
     const more = initialGames?.querySelector("[data-dashboard-games-more]");
     const message = initialGames?.querySelector("[data-dashboard-games-more-status]");
+    const empty = initialGames?.querySelector("[data-dashboard-artwork-empty]");
     if (!list || !more) return;
 
     let rows = 3;
     let columns = 1;
     let hasMore = true;
     let loading = false;
+    let refillRequested = false;
+    const availableItems = () => Array.from(list.children)
+        .filter((item) => item.dataset.artworkUnavailable !== "true");
     const updateColumns = () => {
         // Hidden search grids have no layout; retain the last measured column count.
         if (list.getBoundingClientRect().width > 0) {
@@ -28,21 +32,24 @@ export function initializeMostPlayedGames(initialGames) {
         }
     };
     const reveal = () => {
-        Array.from(list.children).forEach((item, index) => {
-            item.hidden = index >= rows * columns;
+        let index = 0;
+        Array.from(list.children).forEach((item) => {
+            item.hidden = item.dataset.artworkUnavailable === "true" || index++ >= rows * columns;
         });
-        more.hidden = !hasMore && list.children.length <= rows * columns;
+        more.hidden = !hasMore && availableItems().length <= rows * columns;
+        if (empty) empty.hidden = hasMore || availableItems().length > 0;
     };
     const fillRows = async () => {
         updateColumns();
         reveal();
-        if (loading) return;
+        if (loading) { refillRequested = true; return; }
+        refillRequested = false;
         loading = true;
         more.disabled = true;
         try {
             // Fetch one extra card to establish whether another batch is available.
-            while (hasMore && list.children.length <= rows * columns) {
-                const limit = Math.min(300, rows * columns - list.children.length + 1);
+            while (hasMore && availableItems().length <= rows * columns) {
+                const limit = Math.min(300, rows * columns - availableItems().length + 1);
                 message.textContent = "Loading games…";
                 const response = await fetch(
                     `/api/me/games/most-played?offset=${list.children.length}&limit=${limit}`,
@@ -60,13 +67,15 @@ export function initializeMostPlayedGames(initialGames) {
             loading = false;
             more.disabled = false;
             reveal();
+            if (refillRequested) fillRows();
         }
     };
     more.addEventListener("click", () => {
         // A failed request retries the existing target instead of skipping a batch.
-        if (list.children.length >= rows * columns) rows += 3;
+        if (availableItems().length >= rows * columns) rows += 3;
         fillRows();
     });
+    list.addEventListener("dashboard-artwork-unavailable", fillRows);
     if (typeof ResizeObserver !== "undefined") {
         new ResizeObserver(fillRows).observe(list);
     }
@@ -92,7 +101,7 @@ if (searchForm && gamesRegion) {
         initialGames.hidden = false;
         searchResults.hidden = true;
         searchResults.replaceChildren();
-        status.textContent = "Search your complete stored library.";
+        status.textContent = "Search your stored library.";
     };
 
     const renderEmpty = (query) => {
@@ -108,6 +117,13 @@ if (searchForm && gamesRegion) {
         for (const game of games) {
             list.append(createGameRow(game));
         }
+        list.addEventListener("dashboard-artwork-unavailable", () => {
+            if (searchResults.hidden || searchResults.children[0] !== list) return;
+            const available = list.children.length - Array.from(list.children)
+                .filter((item) => item.dataset.artworkUnavailable === "true").length;
+            status.textContent = available === 1 ? "1 matching game." : `${available} matching games.`;
+            if (available === 0) renderEmpty(queryInput.value.trim());
+        });
         searchResults.replaceChildren(list);
     };
 

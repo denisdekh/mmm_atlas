@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Caching.Memory;
 using MMMAtlas.Data;
 using MMMAtlas.Voting;
 
@@ -11,7 +12,8 @@ namespace MMMAtlas.Steam;
 public sealed class SteamArtworkService(
     DatabaseConnection database,
     IHttpClientFactory httpClientFactory,
-    ILogger<SteamArtworkService> logger)
+    ILogger<SteamArtworkService> logger,
+    IMemoryCache cache)
 {
     private readonly SemaphoreSlim[] gates = Enumerable.Range(0, 64)
         .Select(_ => new SemaphoreSlim(1, 1)).ToArray();
@@ -44,7 +46,7 @@ public sealed class SteamArtworkService(
                 CancellationToken = cancellationToken
             }, async (game, token) =>
             {
-                if (!urls.TryGetValue(game.AppId, out var url)) return;
+                if (!urls.TryGetValue(game.AppId, out var assets) || assets.LibraryCardUrl is not { } url) return;
                 var gate = gates[(int)(game.GameId % gates.Length)];
                 await gate.WaitAsync(token);
                 try
@@ -75,6 +77,40 @@ public sealed class SteamArtworkService(
     public Task<SteamArtwork?> ReadCachedAsync(long gameId, CancellationToken cancellationToken) =>
         ReadAsync(gameId, cancellationToken);
 
+    public async Task<SteamStoreThumbnail?> GetStoreThumbnailAsync(long gameId, CancellationToken cancellationToken)
+    {
+        var key = (typeof(SteamStoreThumbnail), gameId);
+        if (cache.TryGetValue<SteamStoreThumbnail?>(key, out var cached)) return cached;
+        var gate = gates[(int)((ulong)gameId % (uint)gates.Length)];
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (cache.TryGetValue<SteamStoreThumbnail?>(key, out cached)) return cached;
+            var artwork = await ReadAsync(gameId, cancellationToken);
+            if (artwork is null) return null;
+            SteamStoreThumbnail? thumbnail = null;
+            try
+            {
+                var assets = await GetUrlsAsync([artwork.AppId], cancellationToken);
+                if (assets.TryGetValue(artwork.AppId, out var urls) && urls.StoreThumbnailUrl is { } url)
+                {
+                    var content = await DownloadAsync(url, cancellationToken);
+                    if (!JpegDimensions.TryRead(content, out var width, out var height)
+                        || width > 1200 || height > 900)
+                        throw new HttpRequestException("Steam store thumbnail is not a supported JPEG.");
+                    thumbnail = new SteamStoreThumbnail(content, Convert.ToHexString(SHA256.HashData(content)));
+                }
+            }
+            catch (Exception exception) when (IsRemoteFailure(exception, cancellationToken))
+            {
+                logger.LogWarning(exception, "Steam store thumbnail for GameId {GameId} could not be fetched.", gameId);
+            }
+            cache.Set(key, thumbnail, thumbnail is null ? TimeSpan.FromMinutes(5) : TimeSpan.FromHours(1));
+            return thumbnail;
+        }
+        finally { gate.Release(); }
+    }
+
     private async Task RefreshAsync(long gameId, bool onlyIfStale, CancellationToken cancellationToken)
     {
         var gate = gates[(int)((ulong)gameId % (uint)gates.Length)];
@@ -87,15 +123,15 @@ public sealed class SteamArtworkService(
                 && checkedAt >= DateTimeOffset.UtcNow.AddDays(-7)) return;
             if (!onlyIfStale && artwork.Url is not null && artwork.Content is not null) return;
             var urls = await GetUrlsAsync([artwork.AppId], cancellationToken);
-            if (urls.TryGetValue(artwork.AppId, out var url))
+            if (urls.TryGetValue(artwork.AppId, out var assets) && assets.LibraryCardUrl is { } url)
                 await DownloadAndSaveAsync(gameId, url, cancellationToken);
         }
         finally { gate.Release(); }
     }
 
-    private async Task<Dictionary<int, string>> GetUrlsAsync(IEnumerable<int> appIds, CancellationToken cancellationToken)
+    private async Task<Dictionary<int, SteamArtworkUrls>> GetUrlsAsync(IEnumerable<int> appIds, CancellationToken cancellationToken)
     {
-        var result = new Dictionary<int, string>();
+        var result = new Dictionary<int, SteamArtworkUrls>();
         var requested = appIds.ToHashSet();
         var input = JsonSerializer.Serialize(new
         {
@@ -113,18 +149,10 @@ public sealed class SteamArtworkService(
             {
                 var appId = item.GetProperty("appid").GetInt32();
                 if (!requested.Contains(appId)
-                    || !item.TryGetProperty("assets", out var assets)
-                    || !assets.TryGetProperty("asset_url_format", out var format)
-                    || !assets.TryGetProperty("library_capsule", out var capsule)) continue;
-                var filename = capsule.GetString();
-                if (string.IsNullOrWhiteSpace(filename)) continue;
-                var path = format.GetString()?.Replace("${FILENAME}", filename);
-                if (path is null || !path.StartsWith($"steam/apps/{appId}/", StringComparison.Ordinal)
-                    || !Uri.TryCreate("https://shared.fastly.steamstatic.com/store_item_assets/" + path,
-                        UriKind.Absolute, out var url)
-                    || url.Host != "shared.fastly.steamstatic.com"
-                    || !url.AbsolutePath.StartsWith($"/store_item_assets/steam/apps/{appId}/", StringComparison.Ordinal)) continue;
-                result[appId] = url.AbsoluteUri;
+                    || !item.TryGetProperty("assets", out var assets)) continue;
+                result[appId] = new SteamArtworkUrls(
+                    ReadAssetUrl(assets, appId, "library_capsule"),
+                    ReadAssetUrl(assets, appId, "small_capsule_2x", "small_capsule", "header"));
             }
         }
         catch (Exception exception) when (IsRemoteFailure(exception, cancellationToken))
@@ -134,29 +162,53 @@ public sealed class SteamArtworkService(
         return result;
     }
 
+    private static string? ReadAssetUrl(JsonElement assets, int appId, params string[] fields)
+    {
+        if (!assets.TryGetProperty("asset_url_format", out var format)) return null;
+        foreach (var field in fields)
+        {
+            if (!assets.TryGetProperty(field, out var asset)) continue;
+            var filename = asset.GetString();
+            if (string.IsNullOrWhiteSpace(filename)) continue;
+            var path = format.GetString()?.Replace("${FILENAME}", filename);
+            if (path is not null && path.StartsWith($"steam/apps/{appId}/", StringComparison.Ordinal)
+                && Uri.TryCreate("https://shared.fastly.steamstatic.com/store_item_assets/" + path,
+                    UriKind.Absolute, out var url)
+                && url.Host == "shared.fastly.steamstatic.com"
+                && url.AbsolutePath.StartsWith($"/store_item_assets/steam/apps/{appId}/", StringComparison.Ordinal))
+                return url.AbsoluteUri;
+        }
+        return null;
+    }
+
+    private async Task<byte[]> DownloadAsync(string url, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(15));
+        var token = timeout.Token;
+        using var response = await httpClientFactory.CreateClient("SteamLibraryImages").GetAsync(
+            url, HttpCompletionOption.ResponseHeadersRead, token);
+        response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentLength is > LibraryCard.MaximumContentLength)
+            throw new HttpRequestException("Steam artwork exceeds the size limit.");
+        await using var stream = await response.Content.ReadAsStreamAsync(token);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[8192];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, token)) > 0)
+        {
+            if (buffer.Length + read > LibraryCard.MaximumContentLength)
+                throw new HttpRequestException("Steam artwork exceeds the size limit.");
+            buffer.Write(chunk, 0, read);
+        }
+        return buffer.ToArray();
+    }
+
     private async Task DownloadAndSaveAsync(long gameId, string url, CancellationToken cancellationToken)
     {
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(15));
-            var downloadToken = timeout.Token;
-            using var response = await httpClientFactory.CreateClient("SteamLibraryImages").GetAsync(
-                url, HttpCompletionOption.ResponseHeadersRead, downloadToken);
-            response.EnsureSuccessStatusCode();
-            if (response.Content.Headers.ContentLength is > LibraryCard.MaximumContentLength)
-                throw new HttpRequestException("Steam library card exceeds the size limit.");
-            await using var stream = await response.Content.ReadAsStreamAsync(downloadToken);
-            using var buffer = new MemoryStream();
-            var chunk = new byte[8192];
-            int read;
-            while ((read = await stream.ReadAsync(chunk, downloadToken)) > 0)
-            {
-                if (buffer.Length + read > LibraryCard.MaximumContentLength)
-                    throw new HttpRequestException("Steam library card exceeds the size limit.");
-                buffer.Write(chunk, 0, read);
-            }
-            var content = buffer.ToArray();
+            var content = await DownloadAsync(url, cancellationToken);
             if (!JpegDimensions.TryRead(content, out var width, out var height)
                 || width > 600 || height > 900 || (long)width * 3 != (long)height * 2)
                 throw new HttpRequestException("Steam library card is not a supported 2:3 JPEG.");
@@ -234,7 +286,11 @@ public sealed class SteamArtworkService(
     private static bool IsRemoteFailure(Exception exception, CancellationToken token) =>
         exception is HttpRequestException or JsonException or KeyNotFoundException or InvalidOperationException
             or IOException || exception is OperationCanceledException && !token.IsCancellationRequested;
+
+    private sealed record SteamArtworkUrls(string? LibraryCardUrl, string? StoreThumbnailUrl);
 }
+
+public sealed record SteamStoreThumbnail(byte[] Content, string Hash);
 
 public sealed record SteamArtwork(int AppId, string? Url, byte[]? Content, string ContentType,
     string? Hash, DateTimeOffset? HashCheckedAtUtc, bool AtlasIconNeedsUpdate);

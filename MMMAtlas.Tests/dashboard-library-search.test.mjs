@@ -180,3 +180,52 @@ test("failed load more retries without skipping another three rows", async (t) =
     await new Promise(setImmediate);
     assert.equal(list.children.filter((item) => !item.hidden).length, 24);
 });
+
+test("artwork failures refill visible rows without changing the server pagination offset", async (t) => {
+    const ui = await setup(t);
+    const { list, more } = addMostPlayedGrid(ui, 4, 1);
+    const requests = [];
+    t.mock.method(globalThis, "fetch", async (url) => {
+        requests.push(url);
+        return { ok: true, json: async () => [{ ...game, gameId: 5 }] };
+    });
+    ui.initializeMostPlayedGames(ui.initial);
+    assert.equal(requests.length, 0);
+    list.children[0].dataset.artworkUnavailable = "true";
+    list.children[1].dataset.artworkUnavailable = "true";
+    list.emit("dashboard-artwork-unavailable");
+    await new Promise(setImmediate);
+    assert.deepEqual(requests, ["/api/me/games/most-played?offset=4&limit=2"]);
+    assert.equal(list.children[0].hidden, true);
+    assert.equal(list.children[1].hidden, true);
+    assert.equal(list.children.filter((item) => !item.hidden).length, 3);
+    assert.equal(more.hidden, true);
+});
+
+test("failed artwork in search results stays hidden and updates the empty state", async (t) => {
+    const ui = await setup(t);
+    t.mock.method(globalThis, "fetch", async () => ({ ok: true, json: async () => [game] }));
+    ui.query.value = "Game";
+    ui.form.emit("submit");
+    await new Promise(setImmediate);
+    const list = ui.results.children[0];
+    list.children[0].dataset.artworkUnavailable = "true";
+    list.emit("dashboard-artwork-unavailable");
+    assert.equal(ui.status.textContent, "0 matching games.");
+    assert.match(ui.results.children[0].textContent, /No games match/);
+});
+
+test("late image failures cannot overwrite a cleared search", async (t) => {
+    const ui = await setup(t);
+    t.mock.method(globalThis, "fetch", async () => ({ ok: true, json: async () => [game] }));
+    ui.query.value = "Game";
+    ui.form.emit("submit");
+    await new Promise(setImmediate);
+    const list = ui.results.children[0];
+    ui.clear.emit("click");
+    list.children[0].dataset.artworkUnavailable = "true";
+    list.emit("dashboard-artwork-unavailable");
+    assert.equal(ui.status.textContent, "Search your stored library.");
+    assert.equal(ui.initial.hidden, false);
+    assert.equal(ui.results.children.length, 0);
+});

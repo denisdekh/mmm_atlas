@@ -73,12 +73,15 @@ test("primary URL gets five seconds before switching to the stored backup", (t) 
     assert.equal(image.isLoading(), false);
 });
 
-test("primary errors use the application, backup errors use the placeholder", (t) => {
+test("primary and backup errors try the store thumbnail before the placeholder", (t) => {
     fakeClock(t);
     const image = createImage();
     initializeDashboardGameImage(image, 3);
     image.emit("error");
     assert.equal(image.src, "/api/games/3/library-card");
+    image.emit("error");
+    assert.equal(image.src, "/api/games/3/store-thumbnail");
+    assert.equal(image.isLoading(), true);
     image.emit("error");
     assert.equal(image.src, "/images/library-card-placeholder.svg");
     assert.equal(image.isLoading(), false);
@@ -86,13 +89,46 @@ test("primary errors use the application, backup errors use the placeholder", (t
     assert.equal(image.src, "/images/library-card-placeholder.svg");
 });
 
-test("missing primary URLs use the backup immediately and timeout safely", (t) => {
+test("missing primary URLs use the backup then thumbnail before timing out", (t) => {
     const clock = fakeClock(t);
     const image = createImage();
     initializeDashboardGameImage(image, 4, null);
     assert.equal(image.src, "/api/games/4/library-card");
     clock.tick(5000);
+    assert.equal(image.src, "/api/games/4/store-thumbnail");
+    clock.tick(5000);
     assert.equal(image.src, "/images/library-card-placeholder.svg");
+});
+
+test("a dashboard game is hidden only after its store thumbnail fails too", (t) => {
+    fakeClock(t);
+    const events = [];
+    const item = { hidden: false, dataset: {}, dispatchEvent: (event) => events.push(event) };
+    const image = createImage();
+    image.closest = () => item;
+    initializeDashboardGameImage(image, 10, null);
+    image.emit("error");
+    assert.equal(image.src, "/api/games/10/store-thumbnail");
+    assert.equal(item.hidden, false);
+    image.emit("error");
+    assert.equal(item.hidden, true);
+    assert.equal(item.dataset.artworkUnavailable, "true");
+    assert.equal(events[0].type, "dashboard-artwork-unavailable");
+    assert.equal(events[0].bubbles, true);
+});
+
+test("a working store thumbnail keeps the dashboard game visible", (t) => {
+    const clock = fakeClock(t);
+    const item = { hidden: false, dataset: {}, dispatchEvent() { assert.fail("must stay visible"); } };
+    const image = createImage();
+    image.closest = () => item;
+    initializeDashboardGameImage(image, 11, null);
+    image.emit("error");
+    image.emit("load");
+    clock.tick(10000);
+    assert.equal(image.src, "/api/games/11/store-thumbnail");
+    assert.equal(item.hidden, false);
+    assert.equal(image.isLoading(), false);
 });
 
 test("reusing dialog artwork cancels the previous image timeout and listeners", (t) => {
@@ -170,4 +206,50 @@ test("outdated CDN bytes are rejected while matching bytes need no backup", asyn
     };
     assert.equal(await (await fetchLibraryCardBlob(9, url, expectedHash)).text(), "current");
     assert.deepEqual(calls, [url]);
+});
+
+test("thumbnail crop fallback pads a landscape image into a portrait JPEG", async (t) => {
+    const calls = [], draws = [];
+    const card = new Blob(["portrait card"], { type: "image/jpeg" });
+    const originalImage = globalThis.Image, originalDocument = globalThis.document;
+    globalThis.Image = class {
+        naturalWidth = 460;
+        naturalHeight = 215;
+        set src(value) { queueMicrotask(() => this.onload()); }
+    };
+    const canvas = {
+        getContext: () => ({ fillRect() {}, drawImage: (...args) => draws.push(args) }),
+        toBlob(callback, type) { assert.equal(type, "image/jpeg"); callback(card); }
+    };
+    globalThis.document = { createElement: () => canvas };
+    t.after(() => {
+        if (originalImage) globalThis.Image = originalImage; else delete globalThis.Image;
+        if (originalDocument) globalThis.document = originalDocument; else delete globalThis.document;
+    });
+    t.mock.method(globalThis, "fetch", async (url) => {
+        calls.push(url);
+        return { ok: url.endsWith("store-thumbnail"), blob: async () => new Blob(["thumbnail"]) };
+    });
+    assert.equal(await fetchLibraryCardBlob(12, "https://example.test/card.jpg"), card);
+    assert.deepEqual(calls, ["https://example.test/card.jpg", "/api/games/12/library-card", "/api/games/12/store-thumbnail"]);
+    assert.equal(canvas.width, 300);
+    assert.equal(canvas.height, 450);
+    assert.equal(draws[0][1], 0);
+    assert.equal(draws[0][3], 300);
+    assert.ok(draws[0][2] > 0); // Centered padding preserves the full landscape thumbnail.
+});
+
+test("crop fallback fails if every image source is unavailable", async (t) => {
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (url) => { calls.push(url); return { ok: false }; });
+    await assert.rejects(fetchLibraryCardBlob(13, "https://example.test/card.jpg"), /unavailable/);
+    assert.equal(calls.at(-1), "/api/games/13/store-thumbnail");
+    assert.equal(calls.length, 3);
+});
+
+test("a thumbnail cannot replace a known library card when recropping its hash", async (t) => {
+    const calls = [];
+    t.mock.method(globalThis, "fetch", async (url) => { calls.push(url); return { ok: false }; });
+    await assert.rejects(fetchLibraryCardBlob(14, null, "CURRENT"), /unavailable/);
+    assert.deepEqual(calls, ["/api/games/14/library-card?v=CURRENT"]);
 });

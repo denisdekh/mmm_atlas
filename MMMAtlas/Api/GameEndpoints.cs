@@ -22,6 +22,7 @@ public static class GameEndpoints
         games.MapGet("/{gameId:long}/library-card", GetLibraryCardAsync)
             .WithName("GetLibraryCard");
         games.MapGet("/{gameId:long}/library-card-url", GetLibraryCardUrlAsync);
+        games.MapGet("/{gameId:long}/store-thumbnail", GetStoreThumbnailAsync);
         games.MapGet("/{gameId:long}/votes", GetGameVotesAsync);
 
         return endpoints;
@@ -42,6 +43,23 @@ public static class GameEndpoints
             hash = artwork.Hash,
             needsAtlasIconUpdate = artwork.AtlasIconNeedsUpdate
         });
+    }
+
+    private static async Task<IResult> GetStoreThumbnailAsync(
+        long gameId,
+        HttpContext httpContext,
+        SteamArtworkService artworkService,
+        CancellationToken cancellationToken)
+    {
+        var thumbnail = await artworkService.GetStoreThumbnailAsync(gameId, cancellationToken);
+        if (thumbnail is null)
+        {
+            httpContext.Response.Headers.CacheControl = "no-store";
+            return Results.NotFound();
+        }
+        httpContext.Response.Headers.CacheControl = "public, max-age=3600";
+        return Results.File(thumbnail.Content, "image/jpeg",
+            entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{thumbnail.Hash}\""));
     }
 
     private static async Task<IResult> GetGamesAsync(

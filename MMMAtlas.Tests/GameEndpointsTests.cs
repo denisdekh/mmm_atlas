@@ -25,6 +25,91 @@ namespace MMMAtlas.Tests;
 public sealed class GameEndpointsTests
 {
     [TestMethod]
+    public async Task SteamRefreshRequiresAuthenticationAndCollectionConsent()
+    {
+        await using var factory = new AtlasApplicationFactory { StubSteamRefresh = true };
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var anonymous = await client.PostAsync("/api/me/steam-data/refresh", null);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "20");
+        var optedOut = await client.PostAsync("/api/me/steam-data/refresh", null);
+        Assert.AreEqual(HttpStatusCode.Forbidden, optedOut.StatusCode);
+        Assert.AreEqual(0, factory.RefreshHttp.RequestCount);
+        var dashboard = await client.GetStringAsync("/dashboard");
+        Assert.DoesNotContain("data-steam-refresh>", dashboard);
+    }
+
+    [TestMethod]
+    public async Task SteamRefreshUpdatesLibraryAndLimitsEachUserToTwoRequests()
+    {
+        await using var factory = new AtlasApplicationFactory { StubSteamRefresh = true };
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        var dashboard = await client.GetStringAsync("/dashboard");
+        StringAssert.Contains(dashboard, "data-steam-refresh>");
+        StringAssert.Contains(dashboard, "Refresh Steam library");
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var response = await client.PostAsync("/api/me/steam-data/refresh", null);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            StringAssert.Contains(await response.Content.ReadAsStringAsync(), "Available");
+        }
+        Assert.AreEqual(4, factory.RefreshHttp.RequestCount);
+        var owned = await client.GetFromJsonAsync<OwnedGameResponse[]>("/api/me/games");
+        Assert.IsNotNull(owned);
+        Assert.IsEmpty(owned);
+        // A new browser session for the same user shares the limit.
+        using var otherSession = factory.CreateClient();
+        otherSession.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        Assert.AreEqual(HttpStatusCode.TooManyRequests,
+            (await otherSession.PostAsync("/api/me/steam-data/refresh", null)).StatusCode);
+        Assert.AreEqual(4, factory.RefreshHttp.RequestCount);
+        // Other users have their own allowance, even from the same IP.
+        otherSession.DefaultRequestHeaders.Remove("X-Test-UserId");
+        otherSession.DefaultRequestHeaders.Add("X-Test-UserId", "20");
+        Assert.AreEqual(HttpStatusCode.Forbidden,
+            (await otherSession.PostAsync("/api/me/steam-data/refresh", null)).StatusCode);
+        await using var connection = new SqliteConnection(factory.Services.GetRequiredService<DatabaseConnection>().Value);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE SteamAccounts SET DataCollectionEnabled = 1 WHERE UserId = 20;";
+        await command.ExecuteNonQueryAsync();
+        Assert.AreEqual(HttpStatusCode.OK,
+            (await otherSession.PostAsync("/api/me/steam-data/refresh", null)).StatusCode);
+        Assert.AreEqual(6, factory.RefreshHttp.RequestCount);
+    }
+
+    [TestMethod]
+    public async Task StoreThumbnailEndpointProvidesTheThirdBackupWithoutReplacingTheLibraryCard()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        factory.ArtworkHttp.MetadataOverride = """
+            {"response":{"store_items":[{"appid":1234,"assets":{
+                "asset_url_format":"steam/apps/1234/${FILENAME}",
+                "small_capsule":"hash/capsule_231x87.jpg"}}]}}
+            """;
+        using var response = await client.GetAsync("/api/games/1/store-thumbnail");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        Assert.AreEqual("image/jpeg", response.Content.Headers.ContentType?.MediaType);
+        Assert.IsNotNull(response.Headers.ETag);
+        CollectionAssert.AreEqual(factory.ArtworkHttp.ImageContent, await response.Content.ReadAsByteArrayAsync());
+        using var repeated = await client.GetAsync("/api/games/1/store-thumbnail");
+        Assert.AreEqual(HttpStatusCode.OK, repeated.StatusCode);
+        Assert.AreEqual(1, factory.ArtworkHttp.MetadataRequests);
+        Assert.AreEqual(1, factory.ArtworkHttp.ImageRequests);
+        var artwork = await factory.Services.GetRequiredService<SteamArtworkService>()
+            .ReadCachedAsync(1, CancellationToken.None);
+        Assert.IsNotNull(artwork);
+        Assert.IsNull(artwork.Content);
+        using var unknown = await client.GetAsync("/api/games/99999/store-thumbnail");
+        Assert.AreEqual(HttpStatusCode.NotFound, unknown.StatusCode);
+        using var absent = await client.GetAsync("/api/games/2/store-thumbnail");
+        Assert.AreEqual(HttpStatusCode.NotFound, absent.StatusCode);
+        Assert.IsTrue(absent.Headers.CacheControl?.NoStore);
+    }
+
+    [TestMethod]
     public async Task LibraryCardLookupUsesStoredMetadataAndRawBackupWithoutFurtherSteamCalls()
     {
         await using var factory = new AtlasApplicationFactory();
@@ -241,6 +326,7 @@ public sealed class GameEndpointsTests
         await using var factory = new AtlasApplicationFactory();
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        await StoreDashboardCardsAsync(factory);
 
         var html = await client.GetStringAsync("/dashboard");
 
@@ -672,6 +758,7 @@ public sealed class GameEndpointsTests
         await using var factory = new AtlasApplicationFactory();
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        await StoreDashboardCardsAsync(factory);
 
         var first = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
             "/api/me/games/most-played?offset=0&limit=1");
@@ -690,6 +777,83 @@ public sealed class GameEndpointsTests
         Assert.AreEqual(2L, second[0].GameId);
         Assert.AreEqual(60, second[0].PlaytimeForeverMinutes);
         Assert.IsEmpty(end);
+    }
+
+    [TestMethod]
+    [DataRow("url")]
+    [DataRow("backup")]
+    [DataRow("legacy")]
+    public async Task DashboardSearchAndPaginationIncludeGamesForAllArtworkFallbacks(string cardSource)
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        await using (var connection = new SqliteConnection(
+            factory.Services.GetRequiredService<DatabaseConnection>().Value))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            // Include even the game with no cached card so the browser can try the thumbnail.
+            command.CommandText = """
+                UPDATE SteamGames SET LibraryCardUrl = '  ', LibraryCardContent = X'' WHERE GameId = 1;
+                """;
+            await command.ExecuteNonQueryAsync();
+            command.CommandText = cardSource switch
+            {
+                "url" => "UPDATE SteamGames SET LibraryCardUrl = 'https://example.test/card.jpg' WHERE GameId = 2;",
+                "backup" => "UPDATE SteamGames SET LibraryCardContent = $card WHERE GameId = 2;",
+                _ => """
+                    INSERT INTO GameAtlasIcons
+                        (GameId, ImageContentType, ImageContent, DiameterPixels,
+                         LibraryCardContent, CreatedAtUtc)
+                    VALUES (2, 'image/png', X'00', 64, $card, CURRENT_TIMESTAMP);
+                    """
+            };
+            command.Parameters.AddWithValue("$card", factory.ArtworkHttp.ImageContent);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var html = await client.GetStringAsync("/dashboard");
+        StringAssert.Contains(html, "data-game-title=\"Game Without Votes\"");
+        StringAssert.Contains(html, "data-game-title=\"Test Game\"");
+
+        var first = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+            "/api/me/games/most-played?offset=0&limit=1");
+        var end = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+            "/api/me/games/most-played?offset=2&limit=1");
+        var search = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+            "/api/me/games/search?q=game");
+        Assert.IsNotNull(first);
+        Assert.IsNotNull(end);
+        Assert.IsNotNull(search);
+        Assert.AreEqual(1L, first.Single().GameId);
+        Assert.IsEmpty(end);
+        Assert.HasCount(2, search);
+
+        // Hiding a dashboard entry does not remove ownership or its vote state.
+        var owned = await client.GetFromJsonAsync<OwnedGameResponse[]>("/api/me/games");
+        Assert.IsNotNull(owned);
+        Assert.HasCount(2, owned);
+        Assert.IsTrue(owned.Single(game => game.GameId == 1).HasVoted);
+        Assert.AreEqual(0, factory.ArtworkHttp.MetadataRequests);
+        Assert.AreEqual(0, factory.ArtworkHttp.ImageRequests);
+    }
+
+    [TestMethod]
+    public async Task DashboardKeepsGamesWithoutCardsUntilTheBrowserTriesTheStoreThumbnail()
+    {
+        await using var factory = new AtlasApplicationFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+
+        var html = await client.GetStringAsync("/dashboard");
+        StringAssert.Contains(html, "class=\"dashboard-game-details\"");
+        StringAssert.Contains(html, "data-game-title=\"Test Game\"");
+        StringAssert.Contains(html, "data-game-title=\"Game Without Votes\"");
+        var games = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
+            "/api/me/games/most-played?offset=0&limit=30");
+        Assert.IsNotNull(games);
+        Assert.HasCount(2, games);
     }
 
     [TestMethod]
@@ -715,6 +879,7 @@ public sealed class GameEndpointsTests
         await using var factory = new AtlasApplicationFactory();
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        await StoreDashboardCardsAsync(factory);
 
         var games = await client.GetFromJsonAsync<LibrarySearchGameResponse[]>(
             "/api/me/games/search?q=WITHOUT");
@@ -1036,6 +1201,17 @@ public sealed class GameEndpointsTests
         return content;
     }
 
+    private static async Task StoreDashboardCardsAsync(AtlasApplicationFactory factory)
+    {
+        await using var connection = new SqliteConnection(
+            factory.Services.GetRequiredService<DatabaseConnection>().Value);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE SteamGames SET LibraryCardContent = $card WHERE GameId IN (1, 2);";
+        command.Parameters.AddWithValue("$card", factory.ArtworkHttp.ImageContent);
+        await command.ExecuteNonQueryAsync();
+    }
+
     private static bool HasEnabledCheckbox(string html) =>
         Regex.IsMatch(
             html,
@@ -1046,6 +1222,8 @@ public sealed class GameEndpointsTests
         WebApplicationFactory<Program>
     {
         public ArtworkTestHttpClientFactory ArtworkHttp { get; } = new();
+        public RefreshHttpHandler RefreshHttp { get; } = new();
+        public bool StubSteamRefresh { get; init; }
         private readonly string _databasePath =
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.db");
 
@@ -1088,6 +1266,9 @@ public sealed class GameEndpointsTests
                     Directory.GetCurrentDirectory()));
                 services.RemoveAll<IAntiforgery>();
                 services.AddSingleton<IAntiforgery, TestAntiforgery>();
+                if (StubSteamRefresh)
+                    services.AddHttpClient<SteamApiClient>()
+                        .ConfigurePrimaryHttpMessageHandler(() => RefreshHttp);
                 services.AddHttpClient("SteamStoreBrowse")
                     .ConfigurePrimaryHttpMessageHandler(() => ArtworkHttp.CreateHandler("SteamStoreBrowse"));
                 services.AddHttpClient("SteamLibraryImages")
@@ -1343,6 +1524,23 @@ public sealed class GameEndpointsTests
                 new ClaimsPrincipal(identity),
                 SchemeName);
             return Task.FromResult(AuthenticateResult.Success(ticket));
+        }
+    }
+
+    private sealed class RefreshHttpHandler : HttpMessageHandler
+    {
+        private int requestCount;
+        public int RequestCount => requestCount;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref requestCount);
+            var payload = request.RequestUri!.AbsolutePath.Contains("GetOwnedGames")
+                ? "{\"response\":{\"game_count\":0,\"games\":[]}}"
+                : "{\"response\":{\"players\":[{\"personaname\":\"Refreshed Tester\"}]}}";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json")
+            });
         }
     }
 

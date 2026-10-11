@@ -17,6 +17,8 @@ public static class SteamAccountEndpoints
 
         steamData.MapPost("/erase", EraseStoredDataAsync);
         steamData.MapPost("/consent", SetConsentAsync);
+        steamData.MapPost("/refresh", RefreshStoredDataAsync)
+            .RequireRateLimiting("steam-library-refresh");
 
         endpoints.MapGet("/api/me/games", GetOwnedGamesAsync)
             .RequireAuthorization()
@@ -233,6 +235,24 @@ public static class SteamAccountEndpoints
 
         httpContext.Response.Headers.CacheControl = "private, no-store";
         return Results.Ok(games);
+    }
+
+    private static async Task<IResult> RefreshStoredDataAsync(
+        HttpContext httpContext,
+        IAntiforgery antiforgery,
+        SteamAuthenticationManager manager,
+        CancellationToken cancellationToken)
+    {
+        await antiforgery.ValidateRequestAsync(httpContext);
+        var userId = GetUserId(httpContext.User);
+        var dashboard = await manager.GetDashboardAsync(userId, cancellationToken);
+        if (dashboard?.DataCollectionEnabled != true)
+            return Results.Problem("Enable data collection before refreshing your Steam library.", statusCode: 403);
+
+        await manager.RefreshStoredDataAsync(userId, cancellationToken);
+        dashboard = await manager.GetDashboardAsync(userId, cancellationToken);
+        httpContext.Response.Headers.CacheControl = "private, no-store";
+        return Results.Ok(new { libraryStatus = dashboard?.LibraryCheckStatus });
     }
 
     private static async Task<IResult> EraseStoredDataAsync(

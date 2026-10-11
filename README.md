@@ -109,6 +109,48 @@ test images, four users, twelve votes, ownership records, and aggregate
 statistics. Clear the environment variable or set it to `false` to return to
 the normal startup behavior.
 
+## Steam library type filters
+
+`Steam:LibraryFilters` in `MMMAtlas/appsettings.json` controls which owned Steam
+apps are imported. Both filters default to `true`:
+
+- `RequireGameType`: exclude items when StoreBrowse `response.store_items[].related_items.parent_appid` has a non-null value. Application type alone does not exclude an item.
+- `ExcludeBeta`: exclude apps whose PICS `common.type` is `Beta`, ignoring case.
+
+The app uses SteamKit2 to fetch public PICS classifications in batches through
+an anonymous Steam connection over WebSocket. No Steam username or password is
+needed. Store parent relationships and known PICS classifications are cached in memory for 24 hours. Type checks
+run before store metadata, ownership records, and artwork are imported; game
+names are not used as a fallback. A game named "Prologue" remains eligible when
+it has no store parent and passes the Beta filter.
+
+Override either setting in `appsettings.Development.json`, another environment's
+appsettings file, or with `Steam__LibraryFilters__RequireGameType` and
+`Steam__LibraryFilters__ExcludeBeta`. File changes are picked up on the next
+library refresh. Set both to `false` to disable classification lookups and
+import all apps returned by `GetOwnedGames`.
+
+Previously imported ownership entries are filtered on the next successful
+refresh. Existing shared catalog records and votes are retained. Failed or
+incomplete classification lookups mark the library check unavailable and keep
+the last saved library; the next refresh retries. Hosting must permit outbound
+connections to Steam's connection managers as well as the existing Web APIs.
+
+The dashboard's Data collection section includes a Refresh Steam library button
+when collection is enabled. Its authenticated, antiforgery-protected
+`POST /api/me/steam-data/refresh` endpoint permits two requests per user in a
+30-minute sliding window. The limit is held in server memory. Successful
+refreshes reload the dashboard; rate-limited requests show a toast without
+contacting Steam.
+
+Dashboard artwork tries the Steam library card URL, the stored library card
+backup, and then the store thumbnail. A game is hidden only when all three
+sources fail. Hidden entries do not shift pagination offsets, and the grid
+loads replacement games when available. Store thumbnails are fetched through
+the app and cached in memory for one hour; failed lookups retry after five
+minutes. For first votes, a thumbnail is padded into a portrait JPEG so it can
+be used by the existing icon crop flow.
+
 ## Log files and verbosity
 
 Logs are written to the console and newline-delimited JSON files in
@@ -362,6 +404,7 @@ explicitly enabled.
 - Entity Framework Core SQLite and Design packages 10.0.10
 - SQLitePCLRaw native SQLite bundle 2.1.12
 - AngleSharp 1.5.2
+- SteamKit2 3.4.0
 - MSTest and ASP.NET Core test-host packages used by `MMMAtlas.Tests`
 
 The application requires a Steam Web API key at startup. Store it under

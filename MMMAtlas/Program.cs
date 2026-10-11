@@ -42,6 +42,16 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("steam-library-refresh", context =>
+        RateLimitPartition.GetSlidingWindowLimiter(
+            context.User.FindFirstValue(SteamClaims.UserId) ?? "anonymous",
+            _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 2,
+                Window = TimeSpan.FromMinutes(30),
+                SegmentsPerWindow = 1800,
+                QueueLimit = 0
+            }));
     options.AddPolicy("feedback", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -90,6 +100,12 @@ builder.Services.AddHttpClient("SteamStoreBrowse", client =>
 })
 .RemoveAllLoggers();
 builder.Services.AddScoped<SteamAuthenticationManager>();
+builder.Services.AddMemoryCache();
+builder.Services.Configure<SteamLibraryFilterOptions>(
+    builder.Configuration.GetSection("Steam:LibraryFilters"));
+builder.Services.AddSingleton<ISteamAppInfoClient, SteamAppInfoClient>();
+builder.Services.AddSingleton<ISteamStoreParentClient, SteamStoreParentClient>();
+builder.Services.AddScoped<SteamLibraryFilter>();
 builder.Services.AddSingleton<SteamArtworkService>();
 builder.Services.AddScoped<VotingManager>();
 builder.Services.AddSingleton<MMMAtlas.AtlasEvents.AtlasEventBroadcaster>();

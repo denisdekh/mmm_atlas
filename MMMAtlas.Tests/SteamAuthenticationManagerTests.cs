@@ -1,6 +1,8 @@
 using System.Net;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Memory;
 using MMMAtlas.Data;
 using MMMAtlas.Steam;
 
@@ -12,6 +14,10 @@ public sealed class SteamAuthenticationManagerTests
     private string _databasePath = null!;
     private SteamApiMessageHandler _apiHandler = null!;
     private TestSteamStoreClient _storeClient = null!;
+    private TestSteamAppInfoClient _appInfoClient = null!;
+    private TestStoreParentClient _parentClient = null!;
+    private ServiceProvider? _optionsServices;
+    private MemoryCache? _artworkCache;
 
     [TestInitialize]
     public void Initialize()
@@ -34,6 +40,8 @@ public sealed class SteamAuthenticationManagerTests
     [TestCleanup]
     public void Cleanup()
     {
+        _optionsServices?.Dispose();
+        _artworkCache?.Dispose();
         SqliteConnection.ClearAllPools();
         if (File.Exists(_databasePath))
         {
@@ -156,6 +164,62 @@ public sealed class SteamAuthenticationManagerTests
         Assert.AreEqual(1L, (long)countCommand.ExecuteScalar()!);
     }
 
+    [TestMethod]
+    public async Task RefreshFiltersExistingNonGamesBeforeMetadataAndArtworkImports()
+    {
+        var manager = CreateManager();
+        var signIn = await manager.CompleteSignInAsync(76561198012345678, CancellationToken.None);
+        await manager.SetDataCollectionEnabledAsync(signIn.UserId, true, CancellationToken.None);
+        AddVote(signIn.UserId);
+
+        _appInfoClient.CommonTypes[10] = "Beta";
+        _parentClient.ParentAppIds.Add(20);
+        await manager.RefreshStoredDataAsync(signIn.UserId, CancellationToken.None);
+
+        var dashboard = await manager.GetDashboardAsync(signIn.UserId, CancellationToken.None);
+        Assert.IsNotNull(dashboard);
+        Assert.IsEmpty(dashboard.MostPlayedGames);
+        Assert.AreEqual(0L, CountRows("SteamLibraryGames"));
+        Assert.AreEqual(1L, CountRows("Votes"));
+        Assert.AreEqual(2, _storeClient.RequestCount);
+    }
+
+    [TestMethod]
+    public async Task FirstImportSkipsNonGamesBeforeCreatingCatalogAndArtworkRecords()
+    {
+        var manager = CreateManager();
+        _appInfoClient.CommonTypes[10] = "Beta";
+        _parentClient.ParentAppIds.Add(20);
+        var signIn = await manager.CompleteSignInAsync(76561198012345678, CancellationToken.None);
+        await manager.SetDataCollectionEnabledAsync(signIn.UserId, true, CancellationToken.None);
+
+        Assert.AreEqual(0L, CountRows("SteamLibraryGames"));
+        Assert.AreEqual(0L, CountRows("SteamGames"));
+        Assert.AreEqual(0L, CountCachedArtwork());
+        Assert.AreEqual(0, _storeClient.RequestCount);
+    }
+
+    [TestMethod]
+    public async Task ClassificationFailurePreservesSavedLibraryAndRetriesOnNextRefresh()
+    {
+        var manager = CreateManager();
+        var signIn = await manager.CompleteSignInAsync(76561198012345678, CancellationToken.None);
+        await manager.SetDataCollectionEnabledAsync(signIn.UserId, true, CancellationToken.None);
+
+        _appInfoClient.Unavailable = true;
+        await manager.RefreshStoredDataAsync(signIn.UserId, CancellationToken.None);
+        Assert.AreEqual(2L, CountRows("SteamLibraryGames"));
+        Assert.AreEqual(2, _storeClient.RequestCount);
+
+        _appInfoClient.Unavailable = false;
+        _appInfoClient.CommonTypes[20] = "Beta";
+        await manager.RefreshStoredDataAsync(signIn.UserId, CancellationToken.None);
+        Assert.AreEqual(1L, CountRows("SteamLibraryGames"));
+        var dashboard = await manager.GetDashboardAsync(signIn.UserId, CancellationToken.None);
+        Assert.IsNotNull(dashboard);
+        Assert.AreEqual("Long Game", dashboard.MostPlayedGames.Single().Name);
+    }
+
     private void AddVote(long userId)
     {
         using var connection =
@@ -267,13 +331,33 @@ public sealed class SteamAuthenticationManagerTests
             Directory.GetCurrentDirectory());
 
         _storeClient = new TestSteamStoreClient();
+        _appInfoClient = new TestSteamAppInfoClient();
+        _parentClient = new TestStoreParentClient();
+        _optionsServices = new ServiceCollection()
+            .AddOptions()
+            .BuildServiceProvider();
+        _artworkCache = new MemoryCache(new MemoryCacheOptions());
         return new SteamAuthenticationManager(
             database,
             apiClient,
             _storeClient,
             NullLogger<SteamAuthenticationManager>.Instance,
             new SteamArtworkService(database, new ArtworkTestHttpClientFactory(),
-                NullLogger<SteamArtworkService>.Instance));
+                NullLogger<SteamArtworkService>.Instance, _artworkCache),
+            new SteamLibraryFilter(_appInfoClient, _parentClient,
+                _optionsServices.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<SteamLibraryFilterOptions>>(),
+                NullLogger<SteamLibraryFilter>.Instance));
+    }
+
+    private sealed class TestSteamAppInfoClient : ISteamAppInfoClient
+    {
+        public Dictionary<int, string> CommonTypes { get; } = new() { [10] = "Game", [20] = "Game" };
+        public bool Unavailable { get; set; }
+
+        public Task<IReadOnlyDictionary<int, SteamAppInfo>?> GetAppsAsync(
+            IEnumerable<int> appIds, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyDictionary<int, SteamAppInfo>?>(Unavailable ? null :
+                appIds.Distinct().ToDictionary(id => id, id => SteamAppInfo.FromCommonType(CommonTypes[id])));
     }
 
     private sealed class TestSteamStoreClient : ISteamStoreClient

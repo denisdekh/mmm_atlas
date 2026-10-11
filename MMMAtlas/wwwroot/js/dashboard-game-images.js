@@ -1,11 +1,13 @@
 const placeholderUrl = "/images/library-card-placeholder.svg";
 const controllers = new WeakMap();
 const backupUrl = (gameId) => `/api/games/${encodeURIComponent(gameId)}/library-card`;
+const thumbnailUrl = (gameId) => `/api/games/${encodeURIComponent(gameId)}/store-thumbnail`;
 
 // Reusable for dashboard cards and dialog artwork. Reinitializing a reused dialog
 // image cancels its previous listeners and timeout.
 export function initializeDashboardGameImage(image, gameId = image.dataset.gameId, primaryUrl) {
     controllers.get(image)?.();
+    image.classList.remove("is-store-thumbnail");
     let phase = "primary";
     let timer;
     let observer;
@@ -17,8 +19,23 @@ export function initializeDashboardGameImage(image, gameId = image.dataset.gameI
     };
     const placeholder = () => {
         phase = "placeholder";
+        image.classList.remove("is-store-thumbnail");
         image.src = placeholderUrl;
         finish();
+        const item = image.closest?.(".dashboard-game");
+        if (item) {
+            item.dataset.artworkUnavailable = "true";
+            item.hidden = true;
+            item.dispatchEvent(new Event("dashboard-artwork-unavailable", { bubbles: true }));
+        }
+    };
+    const thumbnail = () => {
+        if (phase !== "backup") return;
+        phase = "thumbnail";
+        image.classList.add("is-store-thumbnail");
+        clearTimer();
+        image.src = thumbnailUrl(gameId);
+        timer = setTimeout(placeholder, 5000);
     };
     const fallback = () => {
         if (phase !== "primary") return;
@@ -26,16 +43,17 @@ export function initializeDashboardGameImage(image, gameId = image.dataset.gameI
         observer?.disconnect();
         clearTimer();
         image.src = backupUrl(gameId);
-        timer = setTimeout(placeholder, 5000);
+        timer = setTimeout(thumbnail, 5000);
     };
     const onError = () => {
         if (phase === "primary") fallback();
-        else if (phase === "backup") placeholder();
+        else if (phase === "backup") thumbnail();
+        else if (phase === "thumbnail") placeholder();
         else finish();
     };
     const armTimer = () => {
         if (timer || (image.complete && image.naturalWidth > 0)) return;
-        timer = setTimeout(phase === "backup" ? placeholder : fallback, 5000);
+        timer = setTimeout(phase === "thumbnail" ? placeholder : phase === "backup" ? thumbnail : fallback, 5000);
     };
     image.classList.add("is-loading");
     image.addEventListener("load", finish);
@@ -72,7 +90,9 @@ export async function fetchLibraryCardBlob(gameId, primaryUrl, expectedHash) {
             signal: AbortSignal.timeout(5000)
         });
         if (!response.ok) throw new Error("The Steam library card is unavailable.");
-        return response.blob();
+        const blob = await response.blob();
+        if (blob.size === 0) throw new Error("The Steam artwork is empty.");
+        return blob;
     };
     if (primaryUrl && primaryUrl !== backupUrl(gameId)) {
         try {
@@ -89,5 +109,38 @@ export async function fetchLibraryCardBlob(gameId, primaryUrl, expectedHash) {
     // Display images may remain cached until expiry. Cropping uses a hash-keyed
     // backup so a cached old card cannot prevent replacement of an outdated icon.
     const backup = backupUrl(gameId);
-    return fetchBlob(expectedHash ? `${backup}?v=${encodeURIComponent(expectedHash)}` : backup);
+    try {
+        return await fetchBlob(expectedHash ? `${backup}?v=${encodeURIComponent(expectedHash)}` : backup);
+    } catch (error) {
+        // A known current library card must still match the server's hash.
+        if (expectedHash) throw error;
+        return thumbnailToLibraryCard(await fetchBlob(thumbnailUrl(gameId)));
+    }
+}
+
+export function thumbnailToLibraryCard(blob) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        const url = URL.createObjectURL(blob);
+        image.onload = () => {
+            URL.revokeObjectURL(url);
+            try {
+                const canvas = document.createElement("canvas");
+                canvas.width = 300;
+                canvas.height = 450;
+                const context = canvas.getContext("2d");
+                context.fillStyle = "#0d0f14";
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                const scale = Math.min(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+                const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+                context.drawImage(image, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+                canvas.toBlob((card) => card ? resolve(card) : reject(new Error("The store thumbnail could not be prepared.")), "image/jpeg", 0.92);
+            } catch (error) { reject(error); }
+        };
+        image.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("The store thumbnail could not be loaded."));
+        };
+        image.src = url;
+    });
 }
