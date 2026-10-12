@@ -16,6 +16,7 @@ import {
 import { buildFeatures } from "./build-features.js";
 import { AtlasLiveUpdates } from "./atlas-live-updates.js";
 import { preloadGameDetails } from "./game-detail-dialog.js";
+import { getLocalAtlasIconUrl } from "./atlas-icon-cache.js";
 import {
     collectAtlasFilterOptions,
     matchesAtlasFilters,
@@ -215,7 +216,7 @@ class AtlasController {
         }, { passive: true });
 
         document.addEventListener("mmm-atlas:vote-submitted", (event) => {
-            this.liveUpdates.queueGameRefresh(event.detail?.gameId);
+            this.onVoteSubmitted(event);
         });
         document.addEventListener("mmm-atlas:game-updated", (event) => {
             if (event.detail?.game) {
@@ -337,6 +338,15 @@ class AtlasController {
         } finally {
             this.polling = false;
         }
+    }
+
+    onVoteSubmitted(event) {
+        if (event.detail?.iconUrl) {
+            this.iconCache.invalidate(event.detail.previousIconUrl);
+            this.iconCache.invalidate(event.detail.iconUrl);
+            this.requestFrame();
+        }
+        this.liveUpdates.queueGameRefresh(event.detail?.gameId);
     }
 
     async refreshOne(gameId) {
@@ -1076,7 +1086,7 @@ class AtlasController {
         context.clip();
 
         const image = node.game.imageUrl
-            ? this.iconCache.get(node.game.imageUrl, lod.assetTier)
+            ? this.iconCache.get(getLocalAtlasIconUrl(node.game.gameId, node.game.imageUrl), lod.assetTier)
             : null;
         if (image) {
             context.drawImage(

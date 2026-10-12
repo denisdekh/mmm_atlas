@@ -41,3 +41,32 @@ test("temporary HTTP failures preserve the current Atlas game", async (t) => {
     await assert.rejects(AtlasController.prototype.refreshOne.call(controller, 42), /503/);
     assert.equal(node.present, true);
 });
+
+test("a locally submitted crop discards old rendered icons and schedules an immediate frame", () => {
+    const invalidated = [];
+    const refreshed = [];
+    let frames = 0;
+    const controller = {
+        iconCache: { invalidate: (url) => invalidated.push(url) },
+        requestFrame() { frames++; },
+        liveUpdates: { queueGameRefresh: (id) => refreshed.push(id) }
+    };
+    AtlasController.prototype.onVoteSubmitted.call(controller, {
+        detail: { gameId: 42, previousIconUrl: "/api/games/42/atlas-icon",
+            iconUrl: "/api/games/42/atlas-icon?iconRevision=new" }
+    });
+    assert.deepEqual(invalidated, ["/api/games/42/atlas-icon", "/api/games/42/atlas-icon?iconRevision=new"]);
+    assert.equal(frames, 1);
+    assert.deepEqual(refreshed, [42]);
+});
+
+test("ordinary votes do not change the viewer's icon cache key", () => {
+    const refreshed = [];
+    const controller = {
+        iconCache: { invalidate() { assert.fail("No icon was submitted."); } },
+        requestFrame() { assert.fail("No icon was submitted."); },
+        liveUpdates: { queueGameRefresh: (id) => refreshed.push(id) }
+    };
+    AtlasController.prototype.onVoteSubmitted.call(controller, { detail: { gameId: 42 } });
+    assert.deepEqual(refreshed, [42]);
+});

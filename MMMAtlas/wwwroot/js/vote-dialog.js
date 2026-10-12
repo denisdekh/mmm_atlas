@@ -1,6 +1,7 @@
 import { updateCachedVote } from "./user-games-cache.js";
 import { initializeDashboardGameImage, fetchLibraryCardBlob } from "./dashboard-game-images.js";
 import { clampCropOffsets, cropFillColor, drawCroppedIcon } from "./icon-crop-geometry.js";
+import { recordLocalAtlasIconUpdate } from "./atlas-icon-cache.js";
 
 const scoreNames = ["microScore", "mesoScore", "macroScore"];
 
@@ -97,7 +98,7 @@ export function initializeVoteDialog() {
         target.hidden = false;
     };
 
-    const updateVoteTriggers = (vote, hasAtlasIcon) => {
+    const updateVoteTriggers = (vote, iconUrl) => {
         for (const trigger of document.querySelectorAll(
             `[data-vote-trigger][data-game-id="${CSS.escape(gameId)}"]`)) {
             for (const name of scoreNames) {
@@ -106,9 +107,8 @@ export function initializeVoteDialog() {
 
             trigger.dataset.isPublic = String(vote.isPublic);
             trigger.dataset.needsAtlasIcon = String(vote.needsAtlasIcon ?? false);
-            if (hasAtlasIcon) {
-                trigger.dataset.gameIcon =
-                    `/api/games/${encodeURIComponent(gameId)}/atlas-icon`;
+            if (iconUrl) {
+                trigger.dataset.gameIcon = iconUrl;
             }
             trigger.textContent = "Amend vote";
         }
@@ -148,8 +148,11 @@ export function initializeVoteDialog() {
             }
 
             const vote = await response.json();
+            const iconUpdate = formData.has("atlasIcon")
+                ? recordLocalAtlasIconUpdate(gameId)
+                : null;
             updateCachedVote(gameId, vote);
-            updateVoteTriggers(vote, formData.has("atlasIcon"));
+            updateVoteTriggers(vote, iconUpdate?.iconUrl);
             pendingFormData = null;
             cropImage = null;
             libraryCardBlob = null;
@@ -166,7 +169,7 @@ export function initializeVoteDialog() {
             }
             showToast("Your vote was submitted.");
             document.dispatchEvent(new CustomEvent("mmm-atlas:vote-submitted", {
-                detail: { gameId, vote }
+                detail: { gameId, vote, ...iconUpdate }
             }));
         } catch (submissionError) {
             showSubmissionError(submissionError);
