@@ -7,6 +7,19 @@ const publicVotesCache = new Map();
 const publicVotesPerPage = 10;
 const publicVotesFetchSize = 20;
 
+export async function preloadGameDetails(gameId) {
+    const publicVotes = getPublicVotesState(gameId);
+    const [game, ownershipState] = await Promise.all([
+        getGame(gameId),
+        getOwnedGameState(gameId).catch(() => ({
+            ownedGame: null,
+            dataCollectionEnabled: true
+        })),
+        ensurePublicVotesPage(publicVotes, 1)
+    ]);
+    return { game, ownershipState, publicVotes };
+}
+
 export function initializeGameDetailDialog() {
     const dialog = document.querySelector("[data-game-detail-dialog]");
     if (!dialog) {
@@ -30,15 +43,7 @@ export function initializeGameDetailDialog() {
         }
 
         try {
-            const [game, ownershipState] = await Promise.all([
-                getGame(gameId),
-                getOwnedGameState(gameId).catch(() => ({
-                    ownedGame: null,
-                    dataCollectionEnabled: true
-                }))
-            ]);
-            const publicVotes = getPublicVotesState(gameId);
-            await ensurePublicVotesPage(publicVotes, 1);
+            const { game, ownershipState, publicVotes } = await preloadGameDetails(gameId);
 
             if (currentRequestId !== requestId) {
                 return;
@@ -59,6 +64,16 @@ export function initializeGameDetailDialog() {
             open(trigger);
         }
     });
+
+    const preloadTrigger = (event) => {
+        const trigger = event.target.closest("[data-game-detail-trigger]");
+        if (trigger && !trigger.contains(event.relatedTarget)) {
+            // Preloading is speculative; opening will retry failed requests.
+            preloadGameDetails(trigger.dataset.gameId).catch(() => {});
+        }
+    };
+    document.addEventListener("pointerover", preloadTrigger);
+    document.addEventListener("focusin", preloadTrigger);
 
     dialog.querySelector("[data-game-detail-close]")
         .addEventListener("click", () => dialog.close());

@@ -15,6 +15,7 @@ import {
 } from "./atlas-layout.js";
 import { buildFeatures } from "./build-features.js";
 import { AtlasLiveUpdates } from "./atlas-live-updates.js";
+import { preloadGameDetails } from "./game-detail-dialog.js";
 import {
     collectAtlasFilterOptions,
     matchesAtlasFilters,
@@ -1622,6 +1623,9 @@ class AtlasController {
             return;
         }
         this.hoveredNode = node;
+        if (node && !node.test) {
+            preloadGameDetails(node.id).catch(() => {});
+        }
         this.canvas.style.cursor = node ? "pointer" : this.pointer ? "grabbing" : "grab";
         this.requestFrame();
     }
