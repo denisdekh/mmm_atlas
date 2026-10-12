@@ -1484,7 +1484,6 @@ body.atlas-fullscreen-lock {
 .raw-voter,
 .raw-score {
     padding: 0.55rem 0.65rem;
-    border-radius: 0.5rem;
     background: rgba(255, 255, 255, 0.04);
     color: var(--muted);
     font-size: 0.75rem;
