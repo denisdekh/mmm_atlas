@@ -27,7 +27,10 @@ public sealed class SteamGameMetadataUpdater(
     {
         var settings = filter.Settings;
         if (!settings.RequireGameType && !settings.ExcludeBeta)
+        {
+            logger.LogDebug("Steam metadata batch skipped because both filters are disabled.");
             return 0;
+        }
 
         await using var connection = new SqliteConnection(database.Value);
         await connection.OpenAsync(cancellationToken);
@@ -38,7 +41,10 @@ public sealed class SteamGameMetadataUpdater(
             games = await ReadPendingAsync(connection, settings, cancellationToken);
         }
         if (games.Count == 0)
+        {
+            logger.LogDebug("Steam metadata batch skipped because no games need classification.");
             return 0;
+        }
         _lastGameId = games[^1].GameId;
 
         var parentIds = games.Where(game => settings.RequireGameType && game.NeedsParent)
@@ -107,7 +113,8 @@ public sealed class SteamGameMetadataUpdater(
 
         foreach (var gameId in hiddenGames)
             broadcaster.PublishGameUpdated(gameId);
-        logger.LogInformation("Steam metadata batch updated {UpdatedCount} games; excluded {ExcludedCount} games and removed their votes.",
+        logger.Log(updated > 0 ? LogLevel.Information : LogLevel.Debug,
+            "Steam metadata batch updated {UpdatedCount} games; excluded {ExcludedCount} games and removed their votes.",
             updated, hiddenGames.Count);
         return updated;
     }
