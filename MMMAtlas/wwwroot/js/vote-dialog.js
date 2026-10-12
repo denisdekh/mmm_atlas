@@ -61,7 +61,7 @@ export function initializeVoteDialog() {
         error.hidden = true;
 
         for (const name of scoreNames) {
-            setScore(name, hasVote ? trigger.dataset[name] : 5);
+            setScore(name, hasVote ? trigger.dataset[name] : 10);
         }
 
         initializeDashboardGameImage(libraryCard, gameId, trigger.dataset.libraryCardUrl);

@@ -100,6 +100,8 @@ public static class DatabaseInitializer
     {
         foreach (var (column, definition) in new[]
         {
+            ("hasParentApp", "INTEGER NULL CHECK (hasParentApp IS NULL OR hasParentApp IN (0, 1))"),
+            ("isBeta", "INTEGER NULL CHECK (isBeta IS NULL OR isBeta IN (0, 1))"),
             ("LibraryCardUrl", "TEXT NULL"),
             ("LibraryCardContent", "BLOB NULL"),
             ("LibraryCardContentType", "TEXT NULL"),

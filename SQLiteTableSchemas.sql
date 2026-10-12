@@ -92,6 +92,8 @@ CREATE TABLE IF NOT EXISTS SteamGames
     Description  TEXT    NULL,
     ReleaseYear  INTEGER NULL,
     IsFree       INTEGER NULL,
+    hasParentApp INTEGER NULL CHECK (hasParentApp IS NULL OR hasParentApp IN (0, 1)),
+    isBeta       INTEGER NULL CHECK (isBeta IS NULL OR isBeta IN (0, 1)),
     StoreMetadataFetchedAtUtc TEXT NULL,
     LibraryCardUrl TEXT NULL,
     LibraryCardContent BLOB NULL,

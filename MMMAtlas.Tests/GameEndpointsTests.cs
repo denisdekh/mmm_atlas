@@ -25,6 +25,51 @@ namespace MMMAtlas.Tests;
 public sealed class GameEndpointsTests
 {
     [TestMethod]
+    [DataRow("hasParentApp", true)]
+    [DataRow("isBeta", true)]
+    [DataRow("hasParentApp", false)]
+    [DataRow("isBeta", false)]
+    public async Task ClassifiedGamesAreHiddenFromDashboardLibraryAndAtlasWhenFilterEnabled(string column, bool enabled)
+    {
+        await using var factory = new AtlasApplicationFactory
+        {
+            RequireGameType = column != "hasParentApp" || enabled,
+            ExcludeBeta = column != "isBeta" || enabled
+        };
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
+        var database = factory.Services.GetRequiredService<DatabaseConnection>();
+        await using (var connection = new SqliteConnection(database.Value))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"UPDATE SteamGames SET {column}=1 WHERE GameId=1;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        foreach (var url in new[] { "/api/me/games", "/api/me/games/most-played", "/api/me/games/search?q=Game", "/api/games", "/api/games/atlas" })
+        {
+            var games = await client.GetFromJsonAsync<JsonElement[]>(url);
+            Assert.IsNotNull(games);
+            Assert.AreEqual(!enabled, games.Any(game => game.GetProperty("gameId").GetInt64()==1), url);
+            if (url.StartsWith("/api/me/games"))
+                Assert.IsTrue(games.Any(game => game.GetProperty("gameId").GetInt64()==2), "Unknown flags remain visible.");
+        }
+        var first = await client.GetFromJsonAsync<JsonElement[]>("/api/me/games/most-played?offset=0&limit=1");
+        Assert.AreEqual(enabled ? 2L : 1L, first![0].GetProperty("gameId").GetInt64());
+        var dashboard = await client.GetStringAsync("/dashboard");
+        Assert.AreEqual(!enabled, dashboard.Contains("data-game-id=\"1\""));
+        Assert.Contains("data-game-id=\"2\"", dashboard);
+        var details = await client.GetAsync("/api/games/1");
+        Assert.AreEqual(enabled ? HttpStatusCode.NotFound : HttpStatusCode.OK, details.StatusCode);
+        var vote = await client.PostAsync("/api/me/votes/1", new FormUrlEncodedContent(new Dictionary<string,string>
+        {
+            ["microScore"]="8", ["mesoScore"]="6", ["macroScore"]="2"
+        }));
+        Assert.AreEqual(enabled ? HttpStatusCode.NotFound : HttpStatusCode.OK, vote.StatusCode);
+    }
+
+    [TestMethod]
     public async Task SteamRefreshRequiresAuthenticationAndCollectionConsent()
     {
         await using var factory = new AtlasApplicationFactory { StubSteamRefresh = true };
@@ -47,7 +92,7 @@ public sealed class GameEndpointsTests
         client.DefaultRequestHeaders.Add("X-Test-UserId", "10");
         var dashboard = await client.GetStringAsync("/dashboard");
         StringAssert.Contains(dashboard, "data-steam-refresh>");
-        StringAssert.Contains(dashboard, "Refresh Steam library");
+        StringAssert.Contains(dashboard, "Refresh library");
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var response = await client.PostAsync("/api/me/steam-data/refresh", null);
@@ -216,7 +261,7 @@ public sealed class GameEndpointsTests
         await using var factory = new AtlasApplicationFactory();
         using var client = factory.CreateClient();
 
-        for (var attempt = 0; attempt < 3; attempt++)
+        for (var attempt = 0; attempt < 10; attempt++)
         {
             using var accepted = await client.PostAsync(
                 "/api/feedback",
@@ -231,10 +276,10 @@ public sealed class GameEndpointsTests
             "/api/feedback",
             new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["message"] = "Feedback 4"
+                ["message"] = "Feedback 11"
             }));
         Assert.AreEqual(HttpStatusCode.TooManyRequests, rejected.StatusCode);
-        Assert.HasCount(3, await factory.ReadFeedbackAsync());
+        Assert.HasCount(10, await factory.ReadFeedbackAsync());
     }
 
     [TestMethod]
@@ -391,7 +436,8 @@ public sealed class GameEndpointsTests
                 6,
                 2,
                 "Atlas Tester",
-                "https://steamcommunity.com/id/atlas-tester"),
+                "https://steamcommunity.com/id/atlas-tester",
+                120),
             votes[0]);
         Assert.AreEqual(
             new VoteResponse(4, 5, 7, null),
@@ -422,7 +468,8 @@ public sealed class GameEndpointsTests
                 6,
                 2,
                 "Atlas Tester",
-                "https://steamcommunity.com/id/atlas-tester"),
+                "https://steamcommunity.com/id/atlas-tester",
+                120),
             votes[0]);
     }
 
@@ -1224,6 +1271,8 @@ public sealed class GameEndpointsTests
         public ArtworkTestHttpClientFactory ArtworkHttp { get; } = new();
         public RefreshHttpHandler RefreshHttp { get; } = new();
         public bool StubSteamRefresh { get; init; }
+        public bool RequireGameType { get; init; } = true;
+        public bool ExcludeBeta { get; init; } = true;
         private readonly string _databasePath =
             Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.db");
 
@@ -1257,9 +1306,14 @@ public sealed class GameEndpointsTests
             InitializeDatabase();
             builder.UseEnvironment("Production");
             builder.UseSetting("Steam:ApiKey", "integration-test-key");
+            builder.UseSetting("Steam:LibraryFilters:RequireGameType", RequireGameType.ToString());
+            builder.UseSetting("Steam:LibraryFilters:ExcludeBeta", ExcludeBeta.ToString());
             builder.ConfigureLogging(logging => logging.ClearProviders());
             builder.ConfigureServices(services =>
             {
+                var metadataWorker = services.Single(service =>
+                    service.ImplementationType == typeof(SteamGameMetadataWorker));
+                services.Remove(metadataWorker);
                 services.RemoveAll<DatabaseConnection>();
                 services.AddSingleton(DatabaseConnection.Create(
                     $"Data Source={_databasePath};Foreign Keys=True",
@@ -1367,6 +1421,8 @@ public sealed class GameEndpointsTests
                     Description TEXT NULL,
                     ReleaseYear INTEGER NULL,
                     IsFree INTEGER NULL,
+                    hasParentApp INTEGER NULL,
+                    isBeta INTEGER NULL,
                     StoreMetadataFetchedAtUtc TEXT NULL,
                     LibraryCardUrl TEXT NULL,
                     LibraryCardContent BLOB NULL,

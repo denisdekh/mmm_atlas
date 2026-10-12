@@ -65,9 +65,10 @@ public static class GameEndpoints
     private static async Task<IResult> GetGamesAsync(
         HttpContext httpContext,
         DatabaseConnection database,
+        SteamLibraryFilter filter,
         CancellationToken cancellationToken)
     {
-        const string sql = """
+        var sql = $"""
             SELECT
                 steam.GameId,
                 steam.SteamAppId,
@@ -118,6 +119,7 @@ public static class GameEndpoints
                 ON info.GameId = steam.GameId
             LEFT JOIN GameAtlasIcons AS atlas
                 ON atlas.GameId = steam.GameId
+            WHERE {SteamLibraryFilter.VisibleSql}
             ORDER BY
                 COALESCE(
                     steam.Name,
@@ -131,6 +133,7 @@ public static class GameEndpoints
 
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
+        SteamLibraryFilter.AddParameters(command, filter.Settings);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -147,9 +150,10 @@ public static class GameEndpoints
     private static async Task<IResult> GetAtlasGamesAsync(
         HttpContext httpContext,
         DatabaseConnection database,
+        SteamLibraryFilter filter,
         CancellationToken cancellationToken)
     {
-        const string sql = """
+        var sql = $"""
             SELECT
                 steam.GameId,
                 COALESCE(
@@ -187,6 +191,7 @@ public static class GameEndpoints
                 ON info.GameId = steam.GameId
             LEFT JOIN GameAtlasIcons AS atlas
                 ON atlas.GameId = steam.GameId
+            WHERE {SteamLibraryFilter.VisibleSql}
             ORDER BY steam.GameId;
             """;
 
@@ -194,6 +199,7 @@ public static class GameEndpoints
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = sql;
+        SteamLibraryFilter.AddParameters(command, filter.Settings);
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
 
@@ -229,9 +235,10 @@ public static class GameEndpoints
         long gameId,
         HttpContext httpContext,
         DatabaseConnection database,
+        SteamLibraryFilter filter,
         CancellationToken cancellationToken)
     {
-        const string sql = """
+        var sql = $"""
             SELECT
                 steam.GameId,
                 steam.SteamAppId,
@@ -282,7 +289,8 @@ public static class GameEndpoints
                 ON info.GameId = steam.GameId
             LEFT JOIN GameAtlasIcons AS atlas
                 ON atlas.GameId = steam.GameId
-            WHERE steam.GameId = $gameId;
+            WHERE steam.GameId = $gameId
+                AND {SteamLibraryFilter.VisibleSql};
             """;
 
         await using var connection = new SqliteConnection(database.Value);
@@ -298,6 +306,8 @@ public static class GameEndpoints
             );
             """;
         command.Parameters.AddWithValue("$gameId", gameId);
+
+        SteamLibraryFilter.AddParameters(command, filter.Settings);
 
         var gameExists = Convert.ToInt64(
             await command.ExecuteScalarAsync(cancellationToken)) == 1;

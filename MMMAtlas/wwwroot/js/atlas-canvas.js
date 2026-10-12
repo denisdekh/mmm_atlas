@@ -339,7 +339,17 @@ class AtlasController {
     }
 
     async refreshOne(gameId) {
-        const game = await fetchJson(`/api/games/${encodeURIComponent(gameId)}`);
+        const game = await fetchJson(`/api/games/${encodeURIComponent(gameId)}`, { allowNotFound: true });
+        if (game === null) {
+            const node = this.nodes.get(String(gameId));
+            if (node && !node.test) {
+                node.present = false;
+                this.updateFilterOptions();
+                this.applyFilters({ announce: false });
+                this.updateStatus(0);
+            }
+            return;
+        }
         // A vote may have replaced the crop without changing its application URL.
         this.iconCache.invalidate(game.imageUrl);
         const result = this.upsertGame(game, { animate: true });
@@ -1778,10 +1788,13 @@ function calculateBaseScale(width, height) {
         Math.max(1, height - screenPadding * 2) / diagramHeight);
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, { allowNotFound = false } = {}) {
     const response = await fetch(url, {
         headers: { Accept: "application/json" }
     });
+    if (allowNotFound && response.status === 404) {
+        return null;
+    }
     if (!response.ok) {
         throw new Error(`Atlas request failed with HTTP ${response.status}.`);
     }

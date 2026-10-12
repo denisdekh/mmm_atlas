@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace MMMAtlas.Steam;
 
@@ -8,19 +7,16 @@ public interface ISteamStoreParentClient
     Task<IReadOnlyDictionary<int, bool>?> GetParentsAsync(IEnumerable<int> appIds, CancellationToken cancellationToken);
 }
 
-public sealed class SteamStoreParentClient(IHttpClientFactory clients, IMemoryCache cache,
+public sealed class SteamStoreParentClient(IHttpClientFactory clients,
     ILogger<SteamStoreParentClient> logger) : ISteamStoreParentClient
 {
     public async Task<IReadOnlyDictionary<int, bool>?> GetParentsAsync(IEnumerable<int> appIds, CancellationToken cancellationToken)
     {
         var result = new Dictionary<int, bool>();
-        var missing = new List<int>();
-        foreach (var id in appIds.Distinct())
-            if (cache.TryGetValue<bool>((typeof(SteamStoreParentClient), id), out var parent)) result[id] = parent;
-            else missing.Add(id);
+        var requested = appIds.Distinct().ToArray();
         try
         {
-            foreach (var batch in missing.Chunk(100))
+            foreach (var batch in requested.Chunk(100))
             {
                 var input = JsonSerializer.Serialize(new {
                     ids = batch.Select(id => new { appid = id }),
@@ -42,15 +38,13 @@ public sealed class SteamStoreParentClient(IHttpClientFactory clients, IMemoryCa
                         && related.TryGetProperty("parent_appid", out var parent)
                         && parent.ValueKind != JsonValueKind.Null;
                 }
-                if (batch.Any(id => !result.ContainsKey(id))) return null;
-                foreach (var id in batch) cache.Set((typeof(SteamStoreParentClient), id), result[id], TimeSpan.FromHours(24));
             }
-            return result;
+            return result.Count > 0 || requested.Length == 0 ? result : null;
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(exception, "Steam store parent lookup failed.");
-            return null;
+            return result.Count > 0 ? result : null;
         }
     }
 }

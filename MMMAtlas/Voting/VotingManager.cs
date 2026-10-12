@@ -1,10 +1,11 @@
 using Microsoft.Data.Sqlite;
 using System.Security.Cryptography;
 using MMMAtlas.Data;
+using MMMAtlas.Steam;
 
 namespace MMMAtlas.Voting;
 
-public sealed class VotingManager(DatabaseConnection database)
+public sealed class VotingManager(DatabaseConnection database, SteamLibraryFilter? libraryFilter = null)
 {
     public async Task<int> MakeAllPrivateAsync(
         long userId,
@@ -42,13 +43,14 @@ public sealed class VotingManager(DatabaseConnection database)
         await using (var gameCommand = connection.CreateCommand())
         {
             gameCommand.Transaction = transaction;
-            gameCommand.CommandText = """
+            gameCommand.CommandText = $"""
                 SELECT
                     EXISTS
                     (
                         SELECT 1
-                        FROM SteamGames
+                        FROM SteamGames AS steam
                         WHERE GameId = $gameId
+                            AND {SteamLibraryFilter.VisibleSql}
                     ),
                     NOT EXISTS
                     (
@@ -60,6 +62,7 @@ public sealed class VotingManager(DatabaseConnection database)
                     (SELECT LibraryCardHash FROM SteamGames WHERE GameId = $gameId);
                 """;
             gameCommand.Parameters.AddWithValue("$gameId", gameId);
+            SteamLibraryFilter.AddParameters(gameCommand, libraryFilter?.Settings);
 
             await using var reader =
                 await gameCommand.ExecuteReaderAsync(cancellationToken);

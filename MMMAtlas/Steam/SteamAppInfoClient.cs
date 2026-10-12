@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Sockets;
-using Microsoft.Extensions.Caching.Memory;
 using SteamKit2;
 
 namespace MMMAtlas.Steam;
@@ -29,7 +28,6 @@ public sealed record SteamAppInfo(EAppType AppType, string? CommonType)
 
 /// <summary>Fetches public PICS app classifications without a user's Steam credentials.</summary>
 public sealed class SteamAppInfoClient(
-    IMemoryCache cache,
     ILogger<SteamAppInfoClient> logger) : ISteamAppInfoClient, IDisposable
 {
     private readonly SemaphoreSlim gate = new(1, 1);
@@ -44,31 +42,7 @@ public sealed class SteamAppInfoClient(
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var result = new Dictionary<int, SteamAppInfo>();
-            var missing = new List<int>();
-            foreach (var appId in requested)
-            {
-                if (cache.TryGetValue<SteamAppInfo>((typeof(SteamAppInfo), appId), out var cached)
-                    && cached is not null)
-                    result[appId] = cached;
-                else
-                    missing.Add(appId);
-            }
-
-            if (missing.Count == 0) return result;
-            var fetched = await FetchAsync(missing, cancellationToken);
-            if (fetched is null) return null;
-
-            foreach (var (appId, info) in fetched)
-            {
-                result[appId] = info;
-                // Retry unknown types sooner; app classifications may also change over time.
-                cache.Set((typeof(SteamAppInfo), appId), info,
-                    info.AppType == EAppType.Invalid
-                        ? TimeSpan.FromMinutes(5)
-                        : TimeSpan.FromHours(24));
-            }
-            return result;
+            return await FetchAsync(requested, cancellationToken);
         }
         finally { gate.Release(); }
     }
@@ -91,6 +65,7 @@ public sealed class SteamAppInfoClient(
             loggedOn.TrySetResult(callback.Result));
         using var disconnected = callbacks.Subscribe<SteamClient.DisconnectedCallback>(_ => timeout.Cancel());
         var callbackTask = PumpCallbacksAsync(callbacks, token);
+        var result = new Dictionary<int, SteamAppInfo>();
 
         try
         {
@@ -99,7 +74,6 @@ public sealed class SteamAppInfoClient(
             if (loginResult != EResult.OK)
                 throw new IOException($"Steam anonymous logon failed: {loginResult}.");
 
-            var result = new Dictionary<int, SteamAppInfo>();
             foreach (var batch in appIds.Chunk(100))
             {
                 var ids = batch.Select(appId => checked((uint)appId)).ToArray();
@@ -129,7 +103,7 @@ public sealed class SteamAppInfoClient(
                 or HttpRequestException or IOException or WebException or SocketException)
         {
             logger.LogWarning(exception, "Steam PICS app classifications could not be fetched.");
-            return null;
+            return result.Count > 0 ? result : null;
         }
         finally
         {

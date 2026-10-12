@@ -105,7 +105,14 @@ builder.Services.Configure<SteamLibraryFilterOptions>(
     builder.Configuration.GetSection("Steam:LibraryFilters"));
 builder.Services.AddSingleton<ISteamAppInfoClient, SteamAppInfoClient>();
 builder.Services.AddSingleton<ISteamStoreParentClient, SteamStoreParentClient>();
-builder.Services.AddScoped<SteamLibraryFilter>();
+builder.Services.AddSingleton<SteamLibraryFilter>();
+builder.Services.AddOptions<SteamGameMetadataOptions>()
+    .Bind(builder.Configuration.GetSection("Steam:Metadata"))
+    .Validate(options => options.BatchSize is >= 1 and <= 1000,
+        "Steam:Metadata:BatchSize must be between 1 and 1000.")
+    .ValidateOnStart();
+builder.Services.AddSingleton<SteamGameMetadataUpdater>();
+builder.Services.AddHostedService<SteamGameMetadataWorker>();
 builder.Services.AddSingleton<SteamArtworkService>();
 builder.Services.AddScoped<VotingManager>();
 builder.Services.AddSingleton<MMMAtlas.AtlasEvents.AtlasEventBroadcaster>();

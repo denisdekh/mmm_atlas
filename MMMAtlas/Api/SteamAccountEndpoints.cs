@@ -36,9 +36,10 @@ public static class SteamAccountEndpoints
     private static async Task<IResult> GetOwnedGamesAsync(
         HttpContext httpContext,
         DatabaseConnection database,
+        SteamLibraryFilter filter,
         CancellationToken cancellationToken)
     {
-        const string sql = """
+        var sql = $"""
             SELECT
                 library.GameId,
                 CASE WHEN vote.GameId IS NULL THEN 0 ELSE 1 END,
@@ -55,6 +56,7 @@ public static class SteamAccountEndpoints
                 ON vote.UserId = library.UserId
                 AND vote.GameId = library.GameId
             WHERE library.UserId = $userId
+                AND {SteamLibraryFilter.VisibleSql}
             ORDER BY library.GameId;
             """;
 
@@ -75,6 +77,7 @@ public static class SteamAccountEndpoints
             await command.ExecuteScalarAsync(cancellationToken)) == 1;
 
         command.CommandText = sql;
+        SteamLibraryFilter.AddParameters(command, filter.Settings);
 
         await using var reader =
             await command.ExecuteReaderAsync(cancellationToken);
@@ -102,6 +105,7 @@ public static class SteamAccountEndpoints
         string? q,
         HttpContext httpContext,
         DatabaseConnection database,
+        SteamLibraryFilter filter,
         CancellationToken cancellationToken)
     {
         var query = q?.Trim();
@@ -121,7 +125,7 @@ public static class SteamAccountEndpoints
             });
         }
 
-        return await ReadLibraryGamesAsync(query, 0, -1, httpContext, database, cancellationToken);
+        return await ReadLibraryGamesAsync(query, 0, -1, httpContext, database, filter, cancellationToken);
     }
 
     private static Task<IResult> GetMostPlayedGamesAsync(
@@ -129,9 +133,10 @@ public static class SteamAccountEndpoints
         int? limit,
         HttpContext httpContext,
         DatabaseConnection database,
+        SteamLibraryFilter filter,
         CancellationToken cancellationToken) =>
         ReadLibraryGamesAsync(null, Math.Max(0, offset ?? 0),
-            Math.Clamp(limit ?? 30, 1, 300), httpContext, database, cancellationToken);
+            Math.Clamp(limit ?? 30, 1, 300), httpContext, database, filter, cancellationToken);
 
     private static async Task<IResult> ReadLibraryGamesAsync(
         string? query,
@@ -139,9 +144,10 @@ public static class SteamAccountEndpoints
         int limit,
         HttpContext httpContext,
         DatabaseConnection database,
+        SteamLibraryFilter filter,
         CancellationToken cancellationToken)
     {
-        const string sql = """
+        var sql = $"""
             WITH OwnedLibrary AS
             (
                 SELECT
@@ -173,6 +179,7 @@ public static class SteamAccountEndpoints
                 LEFT JOIN GameAtlasIcons AS atlas
                     ON atlas.GameId = library.GameId
                 WHERE library.UserId = $userId
+                    AND {SteamLibraryFilter.VisibleSql}
             )
             SELECT
                 GameId,
@@ -212,6 +219,7 @@ public static class SteamAccountEndpoints
         command.Parameters.AddWithValue("$query", (object?)query ?? DBNull.Value);
         command.Parameters.AddWithValue("$limit", limit);
         command.Parameters.AddWithValue("$offset", offset);
+        SteamLibraryFilter.AddParameters(command, filter.Settings);
 
         var games = new List<LibrarySearchGameDto>();
         await using var reader =

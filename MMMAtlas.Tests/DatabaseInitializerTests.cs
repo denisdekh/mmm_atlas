@@ -43,6 +43,10 @@ public sealed class DatabaseInitializerTests
                     ('LibraryCardUrl', 'LibraryCardContent', 'LibraryCardContentType',
                      'LibraryCardHash', 'LibraryCardHashCheckedAtUtc', 'AtlasIconNeedsUpdate');
                 """));
+            Assert.AreEqual(2L, await ScalarAsync(connection, """
+                SELECT COUNT(*) FROM pragma_table_info('SteamGames')
+                WHERE name IN ('hasParentApp', 'isBeta') AND type='INTEGER' AND "notnull"=0;
+                """));
         }
         finally
         {
@@ -83,6 +87,8 @@ public sealed class DatabaseInitializerTests
                     ALTER TABLE SteamGames DROP COLUMN LibraryCardHash;
                     ALTER TABLE SteamGames DROP COLUMN LibraryCardHashCheckedAtUtc;
                     ALTER TABLE SteamGames DROP COLUMN AtlasIconNeedsUpdate;
+                    ALTER TABLE SteamGames DROP COLUMN hasParentApp;
+                    ALTER TABLE SteamGames DROP COLUMN isBeta;
                     """;
                 await command.ExecuteNonQueryAsync();
             }
@@ -92,10 +98,16 @@ public sealed class DatabaseInitializerTests
             await verify.OpenAsync();
             Assert.AreEqual(1L, await ScalarAsync(verify, """
                 SELECT COUNT(*) FROM SteamGames WHERE GameId=1 AND AtlasIconNeedsUpdate=0
-                    AND LibraryCardHash IS NULL AND LibraryCardHashCheckedAtUtc IS NULL;
+                    AND LibraryCardHash IS NULL AND LibraryCardHashCheckedAtUtc IS NULL
+                    AND hasParentApp IS NULL AND isBeta IS NULL;
                 """));
             Assert.AreEqual(1L, await ScalarAsync(verify,
                 "SELECT COUNT(*) FROM GameAtlasIcons WHERE LibraryCardContent=X'0203' AND ImageContent=X'01';"));
+            await using var invalid = verify.CreateCommand();
+            invalid.CommandText = "UPDATE SteamGames SET hasParentApp=2 WHERE GameId=1;";
+            await Assert.ThrowsExactlyAsync<SqliteException>(() => invalid.ExecuteNonQueryAsync());
+            invalid.CommandText = "UPDATE SteamGames SET isBeta=-1 WHERE GameId=1;";
+            await Assert.ThrowsExactlyAsync<SqliteException>(() => invalid.ExecuteNonQueryAsync());
         }
         finally
         {

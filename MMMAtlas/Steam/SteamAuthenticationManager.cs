@@ -69,7 +69,7 @@ public sealed class SteamAuthenticationManager(
             cancellationToken);
 
         await Task.WhenAll(profileTask, libraryTask);
-        var library = await libraryFilter.FilterAsync(await libraryTask, cancellationToken);
+        var library = await libraryTask;
         var newGameMetadata = await FetchNewGameMetadataAsync(
             library,
             cancellationToken);
@@ -217,7 +217,7 @@ public sealed class SteamAuthenticationManager(
         await reader.DisposeAsync();
 
         await using var gamesCommand = connection.CreateCommand();
-        gamesCommand.CommandText = """
+        gamesCommand.CommandText = $"""
             SELECT
                 steam.GameId,
                 steam.SteamAppId,
@@ -245,10 +245,12 @@ public sealed class SteamAuthenticationManager(
             LEFT JOIN GameAtlasIcons AS atlas
                 ON atlas.GameId = library.GameId
             WHERE library.UserId = $userId
+                AND {SteamLibraryFilter.VisibleSql}
             ORDER BY library.PlaytimeForeverMinutes DESC, steam.SteamAppId
             LIMIT 20;
             """;
         gamesCommand.Parameters.AddWithValue("$userId", userId);
+        SteamLibraryFilter.AddParameters(gamesCommand, libraryFilter.Settings);
 
         var games = new List<SteamDashboardGame>();
         await using var gamesReader =

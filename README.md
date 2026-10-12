@@ -111,30 +111,49 @@ the normal startup behavior.
 
 ## Steam library type filters
 
-`Steam:LibraryFilters` in `MMMAtlas/appsettings.json` controls which owned Steam
-apps are imported. Both filters default to `true`:
+`Steam:LibraryFilters` in `MMMAtlas/appsettings.json` controls visibility and
+background classification of owned Steam apps:
 
-- `RequireGameType`: exclude items when StoreBrowse `response.store_items[].related_items.parent_appid` has a non-null value. Application type alone does not exclude an item.
-- `ExcludeBeta`: exclude apps whose PICS `common.type` is `Beta`, ignoring case.
+- `RequireGameType`: hide games whose nullable integer `SteamGames.hasParentApp` is `1`, indicating a non-null StoreBrowse `response.store_items[].related_items.parent_appid`. Application type alone does not exclude an item.
+- `ExcludeBeta`: hide games whose nullable integer `SteamGames.isBeta` is `1`, indicating PICS `common.type = Beta`, ignoring case. The checked-in settings currently disable this filter.
 
-The app uses SteamKit2 to fetch public PICS classifications in batches through
-an anonymous Steam connection over WebSocket. No Steam username or password is
-needed. Store parent relationships and known PICS classifications are cached in memory for 24 hours. Type checks
-run before store metadata, ownership records, and artwork are imported; game
-names are not used as a fallback. A game named "Prologue" remains eligible when
-it has no store parent and passes the Beta filter.
+Import saves every app returned by `GetOwnedGames`, including ownership, store
+metadata, and artwork. New games start with both flags `NULL`; refreshes retain
+known flags. Dashboard, library/search/pagination, game details, and Atlas reads
+exclude only confirmed `1` flags for enabled filters. `NULL` and `0` remain
+eligible, and game names are not used for classification. Filtered catalog and
+ownership records stay in the database.
 
-Override either setting in `appsettings.Development.json`, another environment's
-appsettings file, or with `Steam__LibraryFilters__RequireGameType` and
-`Steam__LibraryFilters__ExcludeBeta`. File changes are picked up on the next
-library refresh. Set both to `false` to disable classification lookups and
-import all apps returned by `GetOwnedGames`.
+A hosted worker runs one metadata batch at startup and then every 30 seconds.
+It fetches parent metadata only when `RequireGameType` is enabled and Beta
+metadata only when `ExcludeBeta` is enabled, and fills only unknown values.
+Missing/failed lookups leave their flags `NULL` for retry, without failing library
+imports. The worker rotates through pending game IDs so unavailable apps do not
+block later games. Classification results are stored in the database; neither
+metadata client uses a memory cache. PICS uses an anonymous SteamKit2 WebSocket connection; no
+Steam username or password is needed.
 
-Previously imported ownership entries are filtered on the next successful
-refresh. Existing shared catalog records and votes are retained. Failed or
-incomplete classification lookups mark the library check unavailable and keep
-the last saved library; the next refresh retries. Hosting must permit outbound
-connections to Steam's connection managers as well as the existing Web APIs.
+Configure `Steam:Metadata:BatchSize` (default `100`, allowed `1`–`1000`) in an
+appsettings file, through `Steam__Metadata__BatchSize`, or with launch parameters:
+
+```powershell
+dotnet run --project MMMAtlas -- --Steam:Metadata:BatchSize=50
+# Published application:
+dotnet MMMAtlas.dll --Steam:Metadata:BatchSize=50
+```
+
+Override filter settings with `Steam__LibraryFilters__RequireGameType` and
+`Steam__LibraryFilters__ExcludeBeta`, or in an environment's appsettings file.
+Reloaded settings apply to subsequent reads and batches. A disabled filter
+leaves its unknown flags untouched and does not hide its known `1` values.
+
+When a metadata update excludes a game, setting the flags, deleting every vote
+for that game, and removing its now-empty aggregate happen in one SQLite
+transaction. A cleanup failure rolls everything back. New votes for excluded
+games are rejected, and a notification after commit removes the game from open
+Atlas views. Enabling a filter later processes its still-unknown flags; disabling
+a filter does not restore deleted votes. Hosting must permit outbound Steam
+connection-manager and Web API traffic.
 
 The dashboard's Data collection section includes a Refresh Steam library button
 when collection is enabled. Its authenticated, antiforgery-protected
