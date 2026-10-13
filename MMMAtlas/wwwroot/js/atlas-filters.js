@@ -4,6 +4,7 @@ export function matchesAtlasFilters(game, filters) {
         || game.name?.toLocaleLowerCase().includes(query);
 
     return matchesName
+        && (!filters.ownedGameIds || filters.ownedGameIds.has(String(game.gameId)))
         && matchesRange(
             game.releaseYear,
             filters.releaseYearMinimum,

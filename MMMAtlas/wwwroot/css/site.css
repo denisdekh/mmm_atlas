@@ -568,10 +568,16 @@ h2 {
 .atlas-filter-toggle:hover,
 .atlas-filter-toggle:focus-visible,
 .atlas-filter-toggle[aria-expanded="true"],
+.atlas-my-games-filter[aria-pressed="true"],
 .atlas-clear-filters:hover,
 .atlas-clear-filters:focus-visible {
     border-color: rgba(96, 124, 251, 0.55);
     background: var(--surface-raised);
+}
+
+.atlas-my-games-filter:disabled {
+    cursor: wait;
+    opacity: 0.65;
 }
 
 .atlas-filters input::placeholder {

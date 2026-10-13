@@ -60,6 +60,14 @@
                         data-atlas-votes-max />
                 </div>
             </fieldset>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <button
+                    class="atlas-filter-toggle atlas-my-games-filter"
+                    type="button"
+                    aria-pressed="false"
+                    data-atlas-my-games>My games</button>
+            }
             <button
                 class="atlas-filter-toggle"
                 type="button"

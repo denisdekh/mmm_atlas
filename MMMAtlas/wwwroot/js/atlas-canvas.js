@@ -17,6 +17,7 @@ import { buildFeatures } from "./build-features.js";
 import { AtlasLiveUpdates } from "./atlas-live-updates.js";
 import { preloadGameDetails } from "./game-detail-dialog.js";
 import { getLocalAtlasIconUrl } from "./atlas-icon-cache.js";
+import { initializeUserGamesCache } from "./user-games-cache.js";
 import {
     collectAtlasFilterOptions,
     matchesAtlasFilters,
@@ -73,6 +74,10 @@ class AtlasController {
         };
         this.extraFilters = root.querySelector("[data-atlas-extra-filters]");
         this.filterToggle = root.querySelector("[data-atlas-filter-toggle]");
+        this.myGamesButton = root.querySelector("[data-atlas-my-games]");
+        this.myGamesOnly = false;
+        this.ownedGameIds = null;
+        this.myGamesRequest = 0;
         this.extraFilterCount = root.querySelector(
             "[data-atlas-extra-filter-count]");
         this.testControls = root.querySelector("[data-atlas-test-controls]");
@@ -161,6 +166,7 @@ class AtlasController {
         this.filterToggle?.addEventListener("click", () => {
             this.setExtraFiltersOpen(this.extraFilters.hidden);
         });
+        this.myGamesButton?.addEventListener("click", () => this.toggleMyGames());
         this.root.querySelector("[data-atlas-clear-filters]")
             ?.addEventListener("click", () => this.clearFilters());
         this.root.querySelector("[data-atlas-zoom-in]")
@@ -582,6 +588,7 @@ class AtlasController {
     readFilters() {
         return {
             query: this.search?.value ?? "",
+            ownedGameIds: this.myGamesOnly ? this.ownedGameIds : null,
             releaseYearMinimum: parseOptionalFilterNumber(
                 this.releaseYearMinimum?.value),
             releaseYearMaximum: parseOptionalFilterNumber(
@@ -633,7 +640,45 @@ class AtlasController {
         }
     }
 
+    async toggleMyGames() {
+        if (!this.myGamesButton || this.myGamesButton.disabled) return;
+        if (this.myGamesOnly) {
+            this.myGamesOnly = false;
+            this.myGamesButton.setAttribute("aria-pressed", "false");
+            this.applyFilters();
+            return;
+        }
+
+        const request = ++this.myGamesRequest;
+        this.myGamesButton.disabled = true;
+        this.myGamesButton.setAttribute("aria-busy", "true");
+        try {
+            const games = await initializeUserGamesCache();
+            if (request !== this.myGamesRequest) return;
+            this.ownedGameIds = new Set(games.keys());
+            this.myGamesOnly = true;
+            this.myGamesButton.setAttribute("aria-pressed", "true");
+            this.applyFilters();
+        } catch {
+            if (request !== this.myGamesRequest) return;
+            this.status.dataset.state = "error";
+            this.status.textContent = "Your Steam library could not be loaded. Try My games again.";
+        } finally {
+            if (request === this.myGamesRequest) {
+                this.myGamesButton.disabled = false;
+                this.myGamesButton.removeAttribute("aria-busy");
+            }
+        }
+    }
+
     clearFilters() {
+        this.myGamesRequest++;
+        this.myGamesOnly = false;
+        if (this.myGamesButton) {
+            this.myGamesButton.disabled = false;
+            this.myGamesButton.setAttribute("aria-pressed", "false");
+            this.myGamesButton.removeAttribute("aria-busy");
+        }
         for (const input of this.filterInputs) {
             input.value = "";
         }

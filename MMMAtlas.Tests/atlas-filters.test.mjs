@@ -9,6 +9,7 @@ const filters = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 
 const game = {
+    gameId: 42,
     name: "Portal 2",
     releaseYear: 2011,
     voteCount: 24,
@@ -17,6 +18,16 @@ const game = {
     genres: ["Action", "Adventure"],
     isFree: false
 };
+
+test("My games only includes owned games and combines with other filters", () => {
+    const ownedGameIds = new Set(["42"]);
+    assert.equal(filters.matchesAtlasFilters(game, { ownedGameIds }), true);
+    assert.equal(filters.matchesAtlasFilters({ ...game, gameId: 99 }, { ownedGameIds }), false);
+    assert.equal(filters.matchesAtlasFilters(game, { ownedGameIds, query: "Half-Life" }), false);
+    assert.equal(filters.matchesAtlasFilters(game, { ownedGameIds, voteCountMinimum: 25 }), false);
+    assert.equal(filters.matchesAtlasFilters(game, { ownedGameIds: new Set() }), false);
+    assert.equal(filters.matchesAtlasFilters(game, { ownedGameIds: null }), true);
+});
 
 test("applies inclusive year and vote bounds", () => {
     assert.equal(filters.matchesAtlasFilters(game, {
