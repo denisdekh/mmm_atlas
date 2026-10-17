@@ -106,7 +106,7 @@ export function calculateAtlasRenderStyle(pointCount, zoom) {
         : densityRadius + (20 - densityRadius) * zoomSizeProgress;
     const inspectionSizeProgress = smoothstep(9, 18, normalizedZoom);
     const closeInspectionSizeProgress = smoothstep(18, 36, normalizedZoom);
-    const radius = standardRadius
+    const baseRadius = standardRadius
         + 12 * inspectionSizeProgress
         + 16 * closeInspectionSizeProgress;
 
@@ -120,12 +120,16 @@ export function calculateAtlasRenderStyle(pointCount, zoom) {
         iconZoomStart,
         iconZoomStart + 2,
         normalizedZoom);
-    const sizeIconProgress = smoothstep(8, 12, radius);
-    const iconOpacity = showAllIcons
+    const sizeIconProgress = smoothstep(8, 12, baseRadius);
+    const iconProgress = showAllIcons
         ? 1
         : Math.min(sizeIconProgress, Math.max(sparseIconBias, zoomIconProgress));
-    const renderAllIcons = showAllIcons || iconOpacity >= 0.98;
-    const simulate = showAllIcons || iconOpacity >= 0.65;
+    // One decision for the entire graph. Screen position must never affect mode.
+    const renderAllIcons = iconProgress >= 0.5;
+    const iconOpacity = renderAllIcons ? 1 : 0;
+    const simulate = renderAllIcons;
+    const iconRadius = baseRadius * 2;
+    const radius = renderAllIcons ? iconRadius : baseRadius;
     const assetTier = radius < 12
         ? "small"
         : radius < 18
@@ -134,6 +138,7 @@ export function calculateAtlasRenderStyle(pointCount, zoom) {
 
     return {
         radius,
+        iconRadius,
         iconOpacity,
         assetTier,
         showAllIcons,
@@ -143,6 +148,58 @@ export function calculateAtlasRenderStyle(pointCount, zoom) {
             ? `${showAllIcons ? "all" : "representatives"}:${Math.round(radius / 4)}`
             : "none"
     };
+}
+
+// Bound the full score span of each group, so chains of nearby games cannot
+// merge games whose scores are more than one percentage point apart.
+export function groupGamesByScore(items, distance = 0.01) {
+    const grid = new SpatialHash(distance);
+    const groups = [];
+    const axes = ["micro", "meso", "macro"];
+    for (const item of [...items].sort(compareIds)) {
+        const { ratios } = item;
+        const group = grid.query(ratios.micro, ratios.meso, distance)
+            .find((candidate) => axes.every((axis) =>
+                Math.max(candidate.maximum[axis], ratios[axis])
+                    - Math.min(candidate.minimum[axis], ratios[axis])
+                    <= distance + 1e-12));
+        if (group) {
+            group.members.push(item);
+            for (const axis of axes) {
+                group.minimum[axis] = Math.min(group.minimum[axis], ratios[axis]);
+                group.maximum[axis] = Math.max(group.maximum[axis], ratios[axis]);
+            }
+        } else {
+            const created = {
+                members: [item],
+                minimum: { ...ratios },
+                maximum: { ...ratios }
+            };
+            groups.push(created);
+            grid.insert(created, ratios.micro, ratios.meso);
+        }
+    }
+    return groups.map((group) => group.members);
+}
+
+export function createOnionLayout(count, radius, gap = 12) {
+    const positions = count > 0 ? [{ x: 0, y: 0 }] : [];
+    const rings = [];
+    const spacing = radius * 2 + gap;
+    for (let ring = 1; positions.length < count; ring++) {
+        const ringRadius = ring * spacing;
+        const capacity = Math.floor(Math.PI / Math.asin(spacing / (2 * ringRadius)));
+        const size = Math.min(capacity, count - positions.length);
+        rings.push(ringRadius);
+        for (let index = 0; index < size; index++) {
+            const angle = -Math.PI / 2 + index * Math.PI * 2 / size;
+            positions.push({
+                x: Math.cos(angle) * ringRadius,
+                y: Math.sin(angle) * ringRadius
+            });
+        }
+    }
+    return { positions, rings, extent: (rings.at(-1) ?? 0) + radius };
 }
 
 export function createRandomRatioDistributions(count, seed = "mmm-atlas") {
@@ -169,12 +226,12 @@ export function createRandomRatioDistributions(count, seed = "mmm-atlas") {
 
 export class SpatialHash {
     constructor(cellSize = 32) {
-        this.cellSize = Math.max(1, cellSize);
+        this.cellSize = Math.max(0.000001, cellSize);
         this.cells = new Map();
     }
 
     clear(cellSize = this.cellSize) {
-        this.cellSize = Math.max(1, cellSize);
+        this.cellSize = Math.max(0.000001, cellSize);
         this.cells.clear();
     }
 
@@ -248,6 +305,7 @@ export function relaxPoints(points, options = {}) {
     const maximumDisplacement = options.maximumDisplacement ?? 30;
     const movementThreshold = options.movementThreshold ?? 0.025;
     const ordered = [...points].sort(compareIds);
+    const order = new Map(ordered.map((point, index) => [point, index]));
     const maximumRadius = Math.max(...ordered.map((point) => point.radius));
     const grid = new SpatialHash(maximumRadius * 2 + padding);
     let finalMovement = 0;
@@ -270,7 +328,7 @@ export function relaxPoints(points, options = {}) {
 
             const searchRadius = point.radius + maximumRadius + padding;
             for (const neighbor of grid.query(point.x, point.y, searchRadius)) {
-                if (neighbor === point || compareIds(point, neighbor) >= 0) {
+                if (order.get(neighbor) <= index) {
                     continue;
                 }
 

@@ -121,7 +121,7 @@ test("blends axis colors continuously from the ratios", () => {
 
 test("adapts point size and icon visibility to density and zoom", () => {
     const sparse = layout.calculateAtlasRenderStyle(100, 0.75);
-    assert.equal(sparse.radius, 20);
+    assert.equal(sparse.radius, 40);
     assert.equal(sparse.iconOpacity, 1);
     assert.equal(sparse.showAllIcons, true);
     assert.equal(sparse.simulate, true);
@@ -132,28 +132,92 @@ test("adapts point size and icon visibility to density and zoom", () => {
     assert.equal(denseOverview.iconOpacity, 0);
     assert.equal(denseOverview.renderAllIcons, false);
     assert.equal(denseOverview.simulate, false);
-    assert.equal(denseZoomed.radius, 20);
+    assert.equal(denseZoomed.radius, 40);
     assert.ok(denseZoomed.iconOpacity > 0.99);
     assert.equal(denseZoomed.renderAllIcons, true);
     assert.equal(denseZoomed.simulate, true);
 
     const maximumDensityZoomed = layout.calculateAtlasRenderStyle(20_000, 9);
-    assert.equal(maximumDensityZoomed.radius, 20);
+    assert.equal(maximumDensityZoomed.radius, 40);
     assert.equal(maximumDensityZoomed.renderAllIcons, true);
 
     const inspectionZoom = layout.calculateAtlasRenderStyle(20_000, 18);
-    assert.equal(inspectionZoom.radius, 32);
+    assert.equal(inspectionZoom.radius, 64);
     assert.equal(inspectionZoom.assetTier, "large");
     assert.equal(inspectionZoom.renderAllIcons, true);
 
     const maximumInspectionZoom = layout.calculateAtlasRenderStyle(20_000, 36);
-    assert.equal(maximumInspectionZoom.radius, 48);
+    assert.equal(maximumInspectionZoom.radius, 96);
     assert.equal(maximumInspectionZoom.assetTier, "large");
 
     const mediumOverview = layout.calculateAtlasRenderStyle(400, 1);
     assert.ok(mediumOverview.radius > denseOverview.radius);
     assert.ok(mediumOverview.radius < sparse.radius);
     assert.equal(mediumOverview.showAllIcons, false);
+});
+
+test("icon mode is a graph-wide binary decision at every density and zoom", () => {
+    for (const count of [0, 100, 101, 211, 400, 3_000, 20_000]) {
+        for (let zoom = 0.75; zoom <= 36; zoom += 0.125) {
+            const style = layout.calculateAtlasRenderStyle(count, zoom);
+            assert.ok(style.iconOpacity === 0 || style.iconOpacity === 1);
+            assert.equal(style.renderAllIcons, style.iconOpacity === 1);
+            assert.equal(style.simulate, style.renderAllIcons);
+            if (style.renderAllIcons) {
+                assert.equal(style.radius, style.iconRadius);
+            }
+        }
+    }
+});
+
+test("score grouping handles boundaries and does not merge long proximity chains", () => {
+    const node = (id, micro, meso, macro) => ({ id, ratios: { micro, meso, macro } });
+    const items = [
+        node(1, 0.5, 0.3, 0.2),
+        node(2, 0.51, 0.29, 0.2),
+        node(3, 0.52, 0.28, 0.2),
+        node(4, 0.5, 0.31001, 0.18999),
+        node(5, 0.9, 0.05, 0.05)
+    ];
+    const grouped = layout.groupGamesByScore(items);
+    assert.deepEqual(grouped.map((members) => members.map((item) => item.id)),
+        [[1, 2], [3], [4], [5]]);
+    assert.deepEqual(layout.groupGamesByScore([...items].reverse()), grouped);
+    assert.deepEqual(layout.groupGamesByScore([]), []);
+});
+
+test("score groups contain only games within one percentage point on every axis", () => {
+    const items = layout.createRandomRatioDistributions(20_000, "grouping")
+        .map((ratios, id) => ({ id, ratios }));
+    const groups = layout.groupGamesByScore(items);
+    assert.equal(groups.flat().length, items.length);
+    assert.equal(new Set(groups.flat()).size, items.length);
+    for (const members of groups) {
+        for (const axis of ["micro", "meso", "macro"]) {
+            const values = members.map((node) => node.ratios[axis]);
+            assert.ok(Math.max(...values) - Math.min(...values) <= 0.01 + 1e-12);
+        }
+    }
+});
+
+test("onion rings keep one game centered and every icon separated", () => {
+    for (const count of [0, 1, 2, 7, 8, 30, 200]) {
+        for (const radius of [10, 40, 96]) {
+            const { positions, rings, extent } = layout.createOnionLayout(count, radius);
+            assert.equal(positions.length, count);
+            if (count === 0) continue;
+            assert.deepEqual(positions[0], { x: 0, y: 0 });
+            for (let index = 0; index < positions.length; index++) {
+                const point = positions[index];
+                assert.ok(Math.hypot(point.x, point.y) + radius <= extent + 1e-9);
+                for (const other of positions.slice(index + 1)) {
+                    assert.ok(Math.hypot(point.x - other.x, point.y - other.y)
+                        >= radius * 2 + 12 - 1e-9);
+                }
+            }
+            assert.ok(rings.every((ring, index) => index === 0 || ring > rings[index - 1]));
+        }
+    }
 });
 
 test("creates deterministic uniformly valid test distributions", () => {

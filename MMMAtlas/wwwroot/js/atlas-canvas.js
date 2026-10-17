@@ -7,11 +7,12 @@ import {
     atlasViewCenter,
     blendAxisColor,
     calculateAtlasRenderStyle,
+    createOnionLayout,
     createRandomRatioDistributions,
+    groupGamesByScore,
     normalizeRatios,
     projectRatios,
-    relaxPoints,
-    selectSpatialRepresentatives
+    relaxPoints
 } from "./atlas-layout.js";
 import { buildFeatures } from "./build-features.js";
 import { AtlasLiveUpdates } from "./atlas-live-updates.js";
@@ -30,9 +31,9 @@ const maximumZoom = 36;
 const maximumTestPoints = 20_000;
 const testIconUrl = "/images/atlas-test-icon.svg";
 const iconTiers = Object.freeze({
-    small: 32,
-    medium: 64,
-    large: 112
+    small: 64,
+    medium: 128,
+    large: 224
 });
 
 export function initializeAtlasCanvas(root) {
@@ -90,6 +91,10 @@ class AtlasController {
         this.tooltipMeta = root.querySelector("[data-atlas-tooltip-meta]");
         this.tooltipRatios = root.querySelector("[data-atlas-tooltip-ratios]");
         this.nodes = new Map();
+        this.graphNodes = [];
+        this.groups = new Map();
+        this.expandedGroup = null;
+        this.expandedNodes = [];
         this.nodeSequence = 0;
         this.resultButtons = new Map();
         this.hitIndex = new SpatialHash(56);
@@ -564,6 +569,7 @@ class AtlasController {
             this.selectedNode = null;
         }
         this.filteredPointCount = filteredPointCount;
+        this.rebuildGroups();
         this.updateExtraFilterCount(filters);
         if (!this.hasInitializedLod && filteredPointCount > 0) {
             this.currentLod = this.getLod();
@@ -582,6 +588,63 @@ class AtlasController {
                 : this.formatVisibleCounts(visibleCounts);
         }
         this.queueRelaxation(null, 140);
+        this.requestFrame();
+    }
+
+    rebuildGroups() {
+        const previousGroups = this.groups;
+        this.groups = new Map();
+        this.graphNodes = groupGamesByScore(
+            [...this.nodes.values()].filter((node) => node.filteredIn))
+            .map((members) => {
+                if (members.length === 1) {
+                    return members[0];
+                }
+                const id = `group:${JSON.stringify(members.map((node) => node.id))}`;
+                const ratios = Object.fromEntries(["micro", "meso", "macro"]
+                    .map((axis) => [axis, members.reduce(
+                        (sum, node) => sum + node.ratios[axis], 0) / members.length]));
+                const projected = projectRatios(ratios);
+                const group = previousGroups.get(id) ?? {
+                    id,
+                    offsets: new Map(),
+                    worldX: projected.x,
+                    worldY: projected.y,
+                    alpha: 1
+                };
+                Object.assign(group, {
+                    members,
+                    ratios,
+                    game: members[0].game,
+                    filteredIn: true,
+                    targetAlpha: 1,
+                    targetWorldX: projected.x,
+                    targetWorldY: projected.y
+                });
+                this.groups.set(id, group);
+                return group;
+            });
+        if (this.expandedGroup
+            && !this.groups.has(this.expandedGroup.node.id)) {
+            this.closeGroup();
+        }
+        this.setHoveredNode(null);
+        if (!this.expandedGroup && this.selectedNode
+            && !this.graphNodes.includes(this.selectedNode)) {
+            this.selectedNode = this.graphNodes.find((node) =>
+                node.members?.includes(this.selectedNode)) ?? null;
+        }
+    }
+
+    closeGroup() {
+        if (!this.expandedGroup) {
+            return;
+        }
+        this.selectedNode = this.expandedGroup.node;
+        this.expandedGroup = null;
+        this.expandedNodes = [];
+        delete this.shell.dataset.groupExpanded;
+        this.setHoveredNode(null);
         this.requestFrame();
     }
 
@@ -918,19 +981,13 @@ class AtlasController {
             this.currentLod.radius,
             targetLod.radius,
             lodBlend);
-        const iconOpacity = approach(
-            this.currentLod.iconOpacity,
-            targetLod.iconOpacity,
-            lodBlend);
-        let animating = Math.abs(radius - targetLod.radius) > 0.01
-            || Math.abs(iconOpacity - targetLod.iconOpacity) > 0.005;
+        let animating = Math.abs(radius - targetLod.radius) > 0.01;
         this.currentLod = {
             ...targetLod,
-            radius,
-            iconOpacity
+            radius
         };
 
-        for (const node of this.nodes.values()) {
+        for (const node of [...this.nodes.values(), ...this.groups.values()]) {
             node.worldX = approach(node.worldX, node.targetWorldX, positionBlend);
             node.worldY = approach(node.worldY, node.targetWorldY, positionBlend);
             node.alpha = approach(node.alpha, node.targetAlpha, alphaBlend);
@@ -956,6 +1013,7 @@ class AtlasController {
     draw() {
         const context = this.context;
         const { width, height } = this.viewport;
+        this.iconCache.beginFrame();
         context.clearRect(0, 0, width, height);
         this.drawBackground(context);
 
@@ -965,8 +1023,8 @@ class AtlasController {
         }
 
         const drawNodes = [];
-        const margin = this.currentLod.radius + 10;
-        for (const node of this.nodes.values()) {
+        const margin = this.currentLod.radius * 2 + 10;
+        for (const node of this.graphNodes) {
             if (node.alpha < 0.01) {
                 continue;
             }
@@ -983,36 +1041,110 @@ class AtlasController {
             }
         }
 
-        const iconNodes = this.currentLod.iconOpacity > 0.01
-            ? this.selectIconNodes(drawNodes, this.currentLod)
-            : new Set();
-        const promoted = this.hoveredNode ?? this.selectedNode;
-        if (promoted
-            && drawNodes.includes(promoted)
-            && this.currentLod.iconOpacity > 0.01) {
-            iconNodes.add(promoted);
-        }
+        const iconNodes = this.currentLod.renderAllIcons ? drawNodes : [];
         for (const node of iconNodes) {
             const offset = node.offsets.get(this.currentLod.key);
             node.screenX = node.screenTargetX
                 + (offset?.x ?? 0) * this.currentLod.iconOpacity;
             node.screenY = node.screenTargetY
                 + (offset?.y ?? 0) * this.currentLod.iconOpacity;
-            node.displayRadius = this.currentLod.radius;
             node.renderAsIcon = true;
         }
         this.drawDots(context, drawNodes);
         for (const node of iconNodes) {
-            if (node.renderAsIcon) {
+            if (node.renderAsIcon && !node.members) {
                 this.drawIcon(context, node, this.currentLod);
+            }
+        }
+
+        for (const node of drawNodes) {
+            if (this.currentLod.renderAllIcons
+                && node.members && node !== this.expandedGroup?.node) {
+                this.drawGroup(context, node);
             }
         }
 
         this.visibleNodes = drawNodes;
         this.rebuildHitIndex(drawNodes);
+        this.drawExpandedGroup(context);
         this.drawSelection(context);
         this.positionTooltip();
         this.iconCache.prune();
+    }
+
+    drawGroup(context, node) {
+        this.drawIcon(context, node, this.currentLod);
+        context.save();
+        context.globalAlpha = node.alpha;
+        context.fillStyle = "rgba(0, 0, 0, 0.32)";
+        context.strokeStyle = this.colorFor(node);
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(node.screenX, node.screenY, node.displayRadius, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        context.fillStyle = this.palette.text;
+        const label = `+${node.members.length - 1}`;
+        const fontSize = Math.min(node.displayRadius * 0.7,
+            node.displayRadius * 2.6 / label.length);
+        context.font = `800 ${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.shadowColor = "rgba(0, 0, 0, 0.95)";
+        context.shadowBlur = 5;
+        context.fillText(label, node.screenX, node.screenY);
+        context.restore();
+    }
+
+    drawExpandedGroup(context) {
+        const expanded = this.expandedGroup;
+        if (!expanded) {
+            return;
+        }
+        const { width, height } = this.viewport;
+        const radius = Math.max(40, this.currentLod.iconRadius);
+        const layout = createOnionLayout(expanded.node.members.length, radius);
+        const inset = layout.extent + 16;
+        const centerX = (inset * 2 <= width
+            ? clamp(expanded.originX, inset, width - inset)
+            : width / 2) + expanded.panX;
+        const centerY = (inset * 2 <= height
+            ? clamp(expanded.originY, inset, height - inset)
+            : height / 2) + expanded.panY;
+        context.save();
+        context.fillStyle = "rgba(0, 0, 0, 0.45)";
+        context.fillRect(0, 0, width, height);
+        context.strokeStyle = "rgba(255, 255, 255, 0.22)";
+        context.lineWidth = 1;
+        for (const ring of layout.rings) {
+            context.beginPath();
+            context.arc(centerX, centerY, ring, 0, Math.PI * 2);
+            context.stroke();
+        }
+        this.expandedNodes = expanded.node.members.filter((node, index) => {
+            node.screenX = centerX + layout.positions[index].x;
+            node.screenY = centerY + layout.positions[index].y;
+            node.displayRadius = radius;
+            if (node.screenX < -radius || node.screenX > width + radius
+                || node.screenY < -radius || node.screenY > height + radius) {
+                return false;
+            }
+            this.drawIcon(context, node, {
+                ...this.currentLod,
+                iconOpacity: 1,
+                assetTier: "large"
+            });
+            return true;
+        });
+        this.visibleNodes = this.visibleNodes.filter((node) => node !== expanded.node)
+            .concat(this.expandedNodes);
+        context.fillStyle = "rgba(13, 15, 20, 0.92)";
+        context.fillRect(0, height - 36, width, 36);
+        context.fillStyle = this.palette.text;
+        context.font = "500 13px Inter, ui-sans-serif, system-ui, sans-serif";
+        context.textAlign = "center";
+        context.fillText("Drag to explore · Click outside or Esc to fold", width / 2, height - 18);
+        context.restore();
     }
 
     drawBackground(context) {
@@ -1070,6 +1202,9 @@ class AtlasController {
 
     drawDots(context, nodes) {
         for (const node of nodes) {
+            if (node === this.expandedGroup?.node) {
+                continue;
+            }
             context.globalAlpha = node.alpha * 0.82;
             context.fillStyle = this.colorFor(node);
             context.beginPath();
@@ -1082,35 +1217,6 @@ class AtlasController {
             context.fill();
         }
         context.globalAlpha = 1;
-    }
-
-    selectIconNodes(nodes, lod, { simulation = false } = {}) {
-        if (lod.showAllIcons
-            || (!simulation && lod.renderAllIcons)
-            || (simulation && lod.renderAllIcons && nodes.length <= 240)) {
-            return new Set(nodes);
-        }
-        const cellSize = lod.assetTier === "large"
-            ? 44
-            : lod.assetTier === "medium"
-                ? 32
-                : 20;
-        const footprint = cellSize;
-        const viewportCapacity = Math.floor(
-            this.viewport.width * this.viewport.height / (footprint * footprint));
-        const maximumItems = simulation
-            ? Math.min(240, viewportCapacity)
-            : clamp(viewportCapacity, 80, 600);
-        return selectSpatialRepresentatives(nodes, {
-            cellSize,
-            capacity: 1,
-            maximumItems,
-            getX: (node) => node.screenTargetX,
-            getY: (node) => node.screenTargetY,
-            compare: (left, right) =>
-                right.game.voteCount - left.game.voteCount
-                || left.sortOrder - right.sortOrder
-        });
     }
 
     drawIcon(context, node, lod) {
@@ -1187,12 +1293,22 @@ class AtlasController {
     }
 
     hitTest(x, y, { padding = 0, minimumRadius = 0 } = {}) {
+        // Overlay members win even when a background game is closer.
+        for (const node of this.expandedNodes) {
+            if (Math.hypot(node.screenX - x, node.screenY - y)
+                <= Math.max(minimumRadius, node.displayRadius + padding)) {
+                return node;
+            }
+        }
         const radius = Math.max(
             minimumRadius,
             this.currentLod.radius + padding);
         let closest = null;
         let closestDistance = Number.POSITIVE_INFINITY;
         for (const node of this.hitIndex.query(x, y, radius)) {
+            if (node === this.expandedGroup?.node) {
+                continue;
+            }
             const distance = Math.hypot(node.screenX - x, node.screenY - y);
             const nodeRadius = Math.max(
                 minimumRadius,
@@ -1228,7 +1344,7 @@ class AtlasController {
     }
 
     queueInteractiveRelaxation() {
-        if (!this.currentLod.simulate || this.interactiveRelaxationRequest) {
+        if (this.expandedGroup || !this.currentLod.simulate || this.interactiveRelaxationRequest) {
             return;
         }
 
@@ -1259,7 +1375,7 @@ class AtlasController {
         const focus = focusNode
             ? this.worldToScreen(focusNode.targetWorldX, focusNode.targetWorldY)
             : null;
-        for (const node of this.nodes.values()) {
+        for (const node of this.graphNodes) {
             if (!node.filteredIn || node.targetAlpha < 0.5) {
                 continue;
             }
@@ -1281,15 +1397,8 @@ class AtlasController {
             candidateNodes.push(node);
         }
 
-        const eligibleNodes = this.selectIconNodes(
-            candidateNodes,
-            this.currentLod,
-            { simulation: true });
-        if (focusNode && candidateNodes.includes(focusNode)) {
-            eligibleNodes.add(focusNode);
-        }
         const allCandidates = [];
-        for (const node of eligibleNodes) {
+        for (const node of candidateNodes) {
             const target = this.worldToScreen(node.targetWorldX, node.targetWorldY);
             const localDistance = focus
                 ? Math.hypot(target.x - focus.x, target.y - focus.y)
@@ -1513,9 +1622,14 @@ class AtlasController {
                 this.pointer.dragged = true;
             }
             if (this.pointer.dragged) {
-                this.camera.panX += movementX;
-                this.camera.panY += movementY;
-                this.clampCamera();
+                if (this.expandedGroup) {
+                    this.expandedGroup.panX += movementX;
+                    this.expandedGroup.panY += movementY;
+                } else {
+                    this.camera.panX += movementX;
+                    this.camera.panY += movementY;
+                    this.clampCamera();
+                }
                 this.setHoveredNode(null);
                 this.requestFrame();
                 this.queueInteractiveRelaxation();
@@ -1556,6 +1670,8 @@ class AtlasController {
             });
             if (node) {
                 this.activateNode(node);
+            } else {
+                this.closeGroup();
             }
         }
     }
@@ -1607,6 +1723,7 @@ class AtlasController {
             return;
         }
         if (event.key === "Escape") {
+            this.closeGroup();
             this.selectedNode = null;
             this.keyboardSelectionActive = false;
             this.setHoveredNode(null);
@@ -1628,7 +1745,8 @@ class AtlasController {
     }
 
     selectDirectional(direction) {
-        const candidates = this.visibleNodes.filter((node) => node.filteredIn);
+        const candidates = (this.expandedGroup ? this.expandedNodes : this.visibleNodes)
+            .filter((node) => node.filteredIn);
         if (candidates.length === 0) {
             return;
         }
@@ -1678,7 +1796,7 @@ class AtlasController {
             return;
         }
         this.hoveredNode = node;
-        if (node && !node.test) {
+        if (node && !node.test && !node.members) {
             preloadGameDetails(node.id).catch(() => {});
         }
         this.canvas.style.cursor = node ? "pointer" : this.pointer ? "grabbing" : "grab";
@@ -1686,6 +1804,24 @@ class AtlasController {
     }
 
     activateNode(node) {
+        if (this.expandedGroup && !this.expandedGroup.node.members.includes(node)) {
+            this.closeGroup();
+            return;
+        }
+        if (node.members) {
+            this.shell.dataset.groupExpanded = "true";
+            this.expandedGroup = {
+                node,
+                originX: node.screenX,
+                originY: node.screenY,
+                panX: 0,
+                panY: 0
+            };
+            this.selectedNode = node.members[0];
+            this.setHoveredNode(null);
+            this.requestFrame();
+            return;
+        }
         if (!node.test) {
             this.resultButtons.get(node.id)?.click();
         }
@@ -1701,7 +1837,9 @@ class AtlasController {
             return;
         }
         this.tooltipTitle.textContent = node.game.name;
-        this.tooltipMeta.textContent = node.test
+        this.tooltipMeta.textContent = node.members
+            ? `+ ${node.members.length - 1} others`
+            : node.test
             ? "Synthetic Canvas test point"
             : `${this.numberFormat.format(node.game.voteCount)} ${node.game.voteCount === 1 ? "community vote" : "community votes"}`;
         this.tooltipRatios.textContent = this.formatRatios(node);
@@ -1744,6 +1882,11 @@ class IconCache {
         this.queue = [];
         this.active = 0;
         this.clock = 0;
+        this.frameStarted = 0;
+    }
+
+    beginFrame() {
+        this.frameStarted = this.clock;
     }
 
     invalidate(url) {
@@ -1809,7 +1952,8 @@ class IconCache {
             return;
         }
         const removable = [...this.entries.entries()]
-            .filter(([, entry]) => entry.state === "ready" || entry.state === "error")
+            .filter(([, entry]) => entry.lastUsed <= this.frameStarted
+                && (entry.state === "ready" || entry.state === "error"))
             .sort((left, right) => left[1].lastUsed - right[1].lastUsed);
         const removeCount = this.entries.size - this.maximumEntries;
         for (let index = 0; index < removeCount && index < removable.length; index++) {

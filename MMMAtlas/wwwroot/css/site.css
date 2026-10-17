@@ -915,6 +915,10 @@ h2 {
     pointer-events: none;
 }
 
+.atlas-shell[data-group-expanded="true"] .atlas-stage-help {
+    display: none;
+}
+
 .atlas-stage-help span {
     padding: 0.3rem 0.5rem;
     border: 1px solid var(--line);
