@@ -109,6 +109,29 @@ test images, four users, twelve votes, ownership records, and aggregate
 statistics. Clear the environment variable or set it to `false` to return to
 the normal startup behavior.
 
+## Atlas grouping
+
+`Atlas:Grouping` in `MMMAtlas/appsettings.json` controls how nearby scores group
+as the graph zooms. Distances are score fractions: `0.01` is one percentage
+point on each Micro, Meso, and Macro axis.
+
+- `MaximumDistance` (default `0.01`): grouping distance at zoom 1 and below.
+- `MinimumDistance` (default `0.0005`): lower limit at high zoom.
+- `ZoomScalingFactor` (default `1`): exponent in
+  `MaximumDistance / max(1, zoom)^ZoomScalingFactor`, clamped to the minimum
+  and maximum. Larger values split groups sooner; `0` keeps the distance fixed.
+
+With the defaults, zoom 2 uses `0.005`, zoom 10 uses `0.001`, and zoom 20 and
+above uses `0.0005`. Games split when their group's score span exceeds the
+current distance and merge again on zoom out. Equal-score games remain grouped.
+Distances must be between 0 and 1, with minimum no greater than maximum; the
+scaling factor must be finite and nonnegative. Invalid individual values use
+defaults; distances above 1 and a minimum above the maximum are clamped.
+
+Environment overrides use names such as
+`Atlas__Grouping__ZoomScalingFactor=1.5`. Reload the Atlas page after changing
+configuration.
+
 ## Steam library type filters
 
 `Steam:LibraryFilters` in `MMMAtlas/appsettings.json` controls visibility and
@@ -430,21 +453,3 @@ The application requires a Steam Web API key at startup. Store it under
 `Steam:ApiKey` with .NET user-secrets for local development, as shown above,
 and use the deployment platform's secret store in production. Do not put the
 key in an appsettings file or commit it to source control.
-
-
-
-## Current TODO:
-- Styling for _GameDetailDialog.cshtml, _VoteDialog.cshtml, and Dashboard.cshtml (by Mias)
-- ~~extra filters: release year, publisher?, developer?, steam genre labels?, number of votes, f2p vs paid~~
-- ~~move data collection opt-in after login~~
-- ~~restrict UI test mode to development build~~
-- ~~hover over description for the 3 axis ~~
-- ~~match meso and macro color to the video~~
-- ~~standalone page for the atlas (linked from header and main page)~~
-- ~~icons for each axis (e.g. fps for micro, rock paper scissors for meso, chess for macro)?~~
-- ~~live updates to atlas~~
-- ~~add video embed to home page~~
-
-- ~~buy domain~~
-- ~~host on github~~
-- ~~load testing for 37 req/s ~~
